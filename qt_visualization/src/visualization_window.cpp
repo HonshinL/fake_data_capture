@@ -119,9 +119,9 @@ void VisualizationWindow::init_ui()
 
 void VisualizationWindow::init_ros2()
 {
-    // Create subscription to sensor_data topic
+    // Create subscription to processed sensor data topic instead of raw data
     sensor_subscription_ = this->create_subscription<std_msgs::msg::Float64>(
-        "sensor_data",
+        "processed_sensor_data",  // Changed from "sensor_data" to "processed_sensor_data"
         10,
         std::bind(&VisualizationWindow::sensor_data_callback, this, std::placeholders::_1));
 

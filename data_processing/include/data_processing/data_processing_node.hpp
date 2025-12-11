@@ -27,8 +27,12 @@ private:
     // Process data in a separate thread
     void process_data_thread();
 
-    // ROS2 subscription
+    // Simple data processing function
+    double process_data(double raw_data);
+
+    // ROS2 subscription and publisher
     rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr sensor_subscription_;
+    rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr processed_data_publisher_;
 
     // Software FIFO for data buffering
     SoftwareFIFO<double> data_fifo_;
