@@ -1,6 +1,8 @@
 #include "qt_visualization/visualization_window.hpp"
+#include <QApplication>  // 添加QApplication头文件
 #include <chrono>
 #include <iostream>
+#include <QCloseEvent>
 
 using namespace std::chrono_literals;
 
@@ -17,7 +19,37 @@ VisualizationWindow::VisualizationWindow(QWidget *parent)
 
 VisualizationWindow::~VisualizationWindow()
 {
-    delete update_timer_;
+    RCLCPP_INFO(this->get_logger(), "VisualizationWindow destructor called");
+    
+    // Stop and delete update timer
+    if (update_timer_) {
+        update_timer_->stop();
+        delete update_timer_;
+        update_timer_ = nullptr;
+    }
+    
+    // The ROS2 subscription will be automatically destroyed when the node is deleted
+    RCLCPP_INFO(this->get_logger(), "VisualizationWindow destructor completed");
+}
+
+// Override closeEvent to handle window close gracefully
+void VisualizationWindow::closeEvent(QCloseEvent *event)
+{
+    RCLCPP_INFO(this->get_logger(), "Visualization window closing...");
+    
+    // Stop timer
+    if (update_timer_) {
+        update_timer_->stop();
+    }
+    
+    // Accept the close event
+    event->accept();
+    
+    // Request Qt application to quit, ensuring entire application exits
+    QApplication::quit();
+    
+    // Let Qt handle the rest of the shutdown
+    QMainWindow::closeEvent(event);
 }
 
 void VisualizationWindow::init_ui()

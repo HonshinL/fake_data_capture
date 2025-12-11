@@ -27,6 +27,22 @@ DataProcessingNode::DataProcessingNode(const rclcpp::NodeOptions & options)
     RCLCPP_INFO(this->get_logger(), "Processing frequency: %.2f Hz", processing_frequency);
 }
 
+DataProcessingNode::~DataProcessingNode()
+{
+    RCLCPP_INFO(this->get_logger(), "Data Processing Node is shutting down");
+    
+    // Set stop flag
+    stop_thread_ = true;
+    
+    // Wait for processing thread to finish
+    if (processing_thread_.joinable()) {
+        processing_thread_.join();
+        RCLCPP_INFO(this->get_logger(), "Processing thread joined");
+    }
+    
+    RCLCPP_INFO(this->get_logger(), "Data Processing Node shutdown complete");
+}
+
 void DataProcessingNode::sensor_data_callback(const std_msgs::msg::Float64::SharedPtr msg)
 {
     // Push received data to FIFO
@@ -38,7 +54,8 @@ void DataProcessingNode::sensor_data_callback(const std_msgs::msg::Float64::Shar
 void DataProcessingNode::process_data_thread()
 {
     double process_interval = 1.0 / get_parameter("processing_frequency").as_double();
-    auto interval = std::chrono::duration<double>(process_interval);
+    auto total_interval = std::chrono::duration<double>(process_interval);
+    auto short_sleep = std::chrono::milliseconds(1); // Short sleep interval
 
     while (rclcpp::ok() && !stop_thread_) {
         double data;
@@ -47,13 +64,16 @@ void DataProcessingNode::process_data_thread()
         if (data_fifo_.pop(data)) {
             // Emit Qt signal with the processed data
             emit dataReady(data);
-        } else {
-            // If FIFO is empty, sleep briefly
-            std::this_thread::sleep_for(1ms);
-            continue;
         }
 
-        // Sleep to maintain processing frequency
-        std::this_thread::sleep_for(interval);
+        // Use multiple short sleeps to maintain processing frequency
+        // while allowing for responsive termination
+        auto start_time = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration<double>::zero();
+        
+        while (elapsed < total_interval && rclcpp::ok() && !stop_thread_) {
+            std::this_thread::sleep_for(short_sleep);
+            elapsed = std::chrono::steady_clock::now() - start_time;
+        }
     }
 }

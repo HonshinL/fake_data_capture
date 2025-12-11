@@ -9,7 +9,7 @@ class FakeSensorNode : public rclcpp::Node
 {
 public:
   FakeSensorNode();
-  ~FakeSensorNode() = default;
+  ~FakeSensorNode();
 
 private:
   void timer_callback();

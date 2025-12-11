@@ -58,3 +58,8 @@ void FakeSensorNode::timer_callback()
   // 更新计数器
   ++count_;
 }
+
+FakeSensorNode::~FakeSensorNode() {
+  RCLCPP_INFO(this->get_logger(), "Fake Sensor Node is shutting down");
+  // 添加自定义清理逻辑（如果有）
+}

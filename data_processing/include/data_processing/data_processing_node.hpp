@@ -5,6 +5,8 @@
 #include "std_msgs/msg/float64.hpp"
 #include "software_fifo.hpp"
 #include <QtCore>
+#include <thread>
+#include <atomic>
 
 class DataProcessingNode : public QObject, public rclcpp::Node
 {
@@ -12,7 +14,7 @@ class DataProcessingNode : public QObject, public rclcpp::Node
 
 public:
     explicit DataProcessingNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
-    ~DataProcessingNode() = default;
+    ~DataProcessingNode();
 
 signals:
     // Qt signal to emit processed data
