@@ -14,6 +14,7 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(Qt5Core REQUIRED)
 find_package(Qt5Widgets REQUIRED)
@@ -21,40 +22,61 @@ find_package(Qt5Gui REQUIRED)
 find_package(Qt5Charts REQUIRED)
 find_package(fake_capture_msgs REQUIRED)
 
-# Add executable
-add_executable(qt_visualization_node
+# Create library for VisualizationWindow
+add_library(qt_visualization_lib SHARED
   src/visualization_window.cpp
-  src/main.cpp
   include/qt_visualization/visualization_window.hpp
 )
 
-# Explicitly enable AUTOMOC for this target
-set_target_properties(qt_visualization_node PROPERTIES AUTOMOC ON)
-
 # Set target include directories
-target_include_directories(qt_visualization_node PUBLIC
+target_include_directories(qt_visualization_lib PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
 
-# Link libraries
-target_link_libraries(qt_visualization_node
+# Link libraries for the library target
+target_link_libraries(qt_visualization_lib
   Qt5::Core
   Qt5::Widgets
   Qt5::Gui
   Qt5::Charts
 )
 
-# Link ROS2 dependencies
-ament_target_dependencies(qt_visualization_node
+# Link ROS2 dependencies using ament_target_dependencies
+ament_target_dependencies(qt_visualization_lib
   rclcpp
+  rclcpp_components
   std_msgs
   fake_capture_msgs
 )
 
-# Install executable
-install(TARGETS qt_visualization_node
-  DESTINATION lib/${PROJECT_NAME}
+# Register the component（修改这一行）
+rclcpp_components_register_nodes(qt_visualization_lib "qt_visualization::VisualizationWindow")
+
+# Add executable
+add_executable(qt_visualization_node
+  src/main.cpp
+)
+
+# Link the executable with the library
+target_link_libraries(qt_visualization_node
+  qt_visualization_lib
+  Qt5::Core
+  Qt5::Widgets
+)
+
+# Link ROS2 dependencies for executable
+ament_target_dependencies(qt_visualization_node
+  rclcpp
+)
+
+# Install libraries
+install(TARGETS qt_visualization_lib
+  EXPORT export_${PROJECT_NAME}
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+  INCLUDES DESTINATION include
 )
 
 # Install header files
@@ -62,10 +84,19 @@ install(DIRECTORY include/
   DESTINATION include
 )
 
+# Install executable
+install(TARGETS qt_visualization_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 # Install launch files
 install(DIRECTORY launch/
   DESTINATION share/${PROJECT_NAME}/launch
 )
+
+# Export targets
+ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
+ament_export_dependencies(rclcpp rclcpp_components std_msgs Qt5Core Qt5Widgets Qt5Gui Qt5Charts)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

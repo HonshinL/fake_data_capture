@@ -8,6 +8,7 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(Qt5Core REQUIRED)
 find_package(fake_capture_msgs REQUIRED)
@@ -18,14 +19,8 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-# Include directories
-# 移除全局include_directories
-# include_directories(include)
-
-# 其他配置保持不变
-
 # Create library for SoftwareFIFO and DataProcessingNode
-add_library(data_processing_lib
+add_library(data_processing_lib SHARED
   src/software_fifo.cpp
   src/data_processing_node.cpp
   include/data_processing/software_fifo.hpp
@@ -46,9 +41,13 @@ target_link_libraries(data_processing_lib
 # Link ROS2 dependencies using ament_target_dependencies
 ament_target_dependencies(data_processing_lib
   rclcpp
+  rclcpp_components
   std_msgs
   fake_capture_msgs
 )
+
+# Register the component（修改这一行）
+rclcpp_components_register_nodes(data_processing_lib "data_processing::DataProcessingNode")
 
 # Add executable - main.cpp doesn't need MOC
 add_executable(data_processing_node 
@@ -88,7 +87,7 @@ install(TARGETS data_processing_node
 
 # Export targets
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
-ament_export_dependencies(rclcpp std_msgs Qt5Core)
+ament_export_dependencies(rclcpp rclcpp_components std_msgs Qt5Core)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

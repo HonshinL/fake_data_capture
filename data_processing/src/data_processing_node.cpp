@@ -1,8 +1,11 @@
 #include "data_processing/data_processing_node.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "fake_capture_msgs/msg/captured_data.hpp"
+#include "rclcpp_components/register_node_macro.hpp"
 #include <chrono>
 #include <iostream>
+
+namespace data_processing {
 
 DataProcessingNode::DataProcessingNode(const rclcpp::NodeOptions & options)
     : QObject(), Node("data_processing_node", options),
@@ -93,3 +96,8 @@ double DataProcessingNode::process_data(double raw_data)
     
     return filtered_data;
 }
+
+}  // namespace data_processing
+
+// Register the component
+RCLCPP_COMPONENTS_REGISTER_NODE(data_processing::DataProcessingNode)

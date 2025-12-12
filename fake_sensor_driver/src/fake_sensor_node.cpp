@@ -7,8 +7,10 @@
 
 using namespace std::chrono_literals;
 
-FakeSensorNode::FakeSensorNode()
-    : rclcpp::Node("fake_sensor_node")  // 调用父类构造函数并提供节点名称
+namespace fake_sensor_driver {
+
+FakeSensorNode::FakeSensorNode(const rclcpp::NodeOptions & options)
+    : rclcpp::Node("fake_sensor_node", options)  // 调用父类构造函数并提供节点名称和选项
 {
   // 声明参数
   // 将默认频率从10Hz改为20Hz
@@ -74,3 +76,5 @@ FakeSensorNode::~FakeSensorNode() {
   RCLCPP_INFO(this->get_logger(), "Fake Sensor Node is shutting down");
   // 添加自定义清理逻辑（如果有）
 }
+
+}  // namespace fake_sensor_driver

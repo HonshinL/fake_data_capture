@@ -34,7 +34,7 @@ int main(int argc, char **argv)
     signal(SIGTERM, signal_handler);
     
     // Create visualization window using smart pointer
-    auto window = std::make_shared<VisualizationWindow>();
+    auto window = std::make_shared<qt_visualization::VisualizationWindow>();
     window->show();
     
     // Run ROS2 spin in a separate thread

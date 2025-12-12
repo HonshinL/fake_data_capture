@@ -11,11 +11,14 @@
 #include <QLabel>
 #include <QHBoxLayout>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_components/register_node_macro.hpp>
 #include <fake_capture_msgs/msg/captured_data.hpp>  // 使用带有时间戳的消息类型
 #include <queue>      // 添加queue头文件
 #include <mutex>      // 添加mutex头文件
 
 QT_CHARTS_USE_NAMESPACE
+
+namespace qt_visualization {
 
 // 自定义结构体，包含数据和时间戳
 struct DataWithTimestamp {
@@ -28,7 +31,7 @@ class VisualizationWindow : public QMainWindow, public rclcpp::Node
     Q_OBJECT
 
 public:
-    explicit VisualizationWindow(QWidget *parent = nullptr);
+    explicit VisualizationWindow(const rclcpp::NodeOptions & options = rclcpp::NodeOptions(), QWidget *parent = nullptr);
     ~VisualizationWindow() override;
 
 private slots:
@@ -82,6 +85,12 @@ private:
     QValueAxis *latency_x_axis_;
     QValueAxis *latency_y_axis_;
     
+    // UI components for average latency display
+    QLabel *average_latency_label_;  // 显示平均延迟的标签
+    QLineSeries *average_latency_series_;  // 平均延迟的曲线
+    double total_latency_;  // 总延迟，用于计算平均值
+    int latency_point_count_;  // 延迟数据点数量
+    
     // Zoom controls
     QSlider *zoom_slider_;
     QLabel *zoom_label_;
@@ -90,5 +99,10 @@ private:
     QVBoxLayout *main_layout_;
     QHBoxLayout *zoom_layout_;
 };
+
+// Register the component
+RCLCPP_COMPONENTS_REGISTER_NODE(qt_visualization::VisualizationWindow)
+
+}  // namespace qt_visualization
 
 #endif  // QT_VISUALIZATION__VISUALIZATION_WINDOW_HPP_

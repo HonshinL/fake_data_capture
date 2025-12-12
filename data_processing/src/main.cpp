@@ -4,7 +4,7 @@
 #include <signal.h>
 
 // Global variables for signal handling
-std::shared_ptr<DataProcessingNode> g_node = nullptr;
+std::shared_ptr<data_processing::DataProcessingNode> g_node = nullptr;
 QCoreApplication* g_app = nullptr;
 
 // Signal handler for Ctrl+C
@@ -30,7 +30,7 @@ int main(int argc, char * argv[])
     rclcpp::init(argc, argv);
 
     // Create and spin the node
-    g_node = std::make_shared<DataProcessingNode>();
+    g_node = std::make_shared<data_processing::DataProcessingNode>();
     
     // Create a thread to spin the node
     std::thread ros_thread([&]() {

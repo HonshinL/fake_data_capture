@@ -8,11 +8,12 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(fake_capture_msgs REQUIRED)
 
 # 创建库
-add_library(fake_sensor_node_lib
+add_library(fake_sensor_node_lib SHARED
   src/fake_sensor_node.cpp
 )
 
@@ -23,7 +24,15 @@ target_include_directories(fake_sensor_node_lib PUBLIC
 )
 
 # 设置库的依赖
-ament_target_dependencies(fake_sensor_node_lib rclcpp std_msgs fake_capture_msgs)
+ament_target_dependencies(fake_sensor_node_lib 
+  rclcpp 
+  rclcpp_components
+  std_msgs 
+  fake_capture_msgs
+)
+
+# 注册组件（修改这一行）
+rclcpp_components_register_nodes(fake_sensor_node_lib "fake_sensor_driver::FakeSensorNode")
 
 # 创建可执行文件
 add_executable(fake_sensor_node 
@@ -56,7 +65,7 @@ install(DIRECTORY include/
 
 # 导出库配置
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
-ament_export_dependencies(rclcpp std_msgs)
+ament_export_dependencies(rclcpp rclcpp_components std_msgs)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
