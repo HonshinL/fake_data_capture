@@ -5,6 +5,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <stdexcept>
+#include <chrono>
 
 template <typename T>
 class SoftwareFIFO
@@ -17,8 +18,9 @@ public:
     bool push(const T & data);
     bool push(T && data);
 
-    // Pop data from FIFO
+    // Pop data from FIFO (blocking and non-blocking versions)
     bool pop(T & data);
+    bool pop_blocking(T & data, const std::chrono::milliseconds& timeout = std::chrono::milliseconds(100));
 
     // Get FIFO status
     bool is_empty() const;
@@ -100,6 +102,27 @@ template <typename T>
 bool SoftwareFIFO<T>::pop(T & data)
 {
     std::unique_lock<std::mutex> lock(mutex_);
+
+    if (is_empty()) {
+        return false;
+    }
+
+    data = buffer_[head_];
+    head_ = (head_ + 1) % capacity_;
+    --size_;
+    not_full_.notify_one();
+    return true;
+}
+
+template <typename T>
+bool SoftwareFIFO<T>::pop_blocking(T & data, const std::chrono::milliseconds& timeout)
+{
+    std::unique_lock<std::mutex> lock(mutex_);
+
+    // 等待直到有数据或超时
+    if (!not_empty_.wait_for(lock, timeout, [this] { return !is_empty(); })) {
+        return false;  // 超时
+    }
 
     if (is_empty()) {
         return false;
