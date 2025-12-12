@@ -11,11 +11,17 @@
 #include <QLabel>
 #include <QHBoxLayout>
 #include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/float64.hpp>
+#include <fake_capture_msgs/msg/captured_data.hpp>  // 使用带有时间戳的消息类型
 #include <queue>      // 添加queue头文件
 #include <mutex>      // 添加mutex头文件
 
 QT_CHARTS_USE_NAMESPACE
+
+// 自定义结构体，包含数据和时间戳
+struct DataWithTimestamp {
+  double data;
+  rclcpp::Time timestamp;
+};
 
 class VisualizationWindow : public QMainWindow, public rclcpp::Node
 {
@@ -26,8 +32,8 @@ public:
     ~VisualizationWindow() override;
 
 private slots:
-    // Slot to update chart with new data
-    void updateChart(double value);
+    // Slot to update charts with new data
+    void updateChart(double value, double latency);
     
     // Slot for timer to update UI
     void timerUpdate();
@@ -43,17 +49,18 @@ private:
     // Helper methods
     void init_ui();
     void init_ros2();
-    void sensor_data_callback(const std_msgs::msg::Float64::SharedPtr msg);
+    void sensor_data_callback(const fake_capture_msgs::msg::CapturedData::SharedPtr msg);  // 使用带有时间戳的消息类型
     
     // ROS2 subscription for sensor data
-    rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr sensor_subscription_;
+    rclcpp::Subscription<fake_capture_msgs::msg::CapturedData>::SharedPtr sensor_subscription_;  // 使用带有时间戳的消息类型
     
-    // Thread-safe data queue
-    std::queue<double> data_queue_;
+    // Thread-safe data queue (包含时间戳)
+    std::queue<DataWithTimestamp> data_queue_;
     std::mutex queue_mutex_;
     
     // Data storage and counters
     QList<QPointF> all_data_points_;
+    QList<QPointF> all_latency_points_;  // 存储延迟数据点
     double x_counter_;
     size_t max_storage_points_;
     size_t max_data_points_;
@@ -61,12 +68,21 @@ private:
     // Timer for UI updates
     QTimer *update_timer_;
     
-    // UI components
+    // UI components for main data chart
     QChartView *chart_view_;
     QChart *chart_;
     QLineSeries *series_;
     QValueAxis *x_axis_;
     QValueAxis *y_axis_;
+    
+    // UI components for latency chart
+    QChartView *latency_chart_view_;
+    QChart *latency_chart_;
+    QLineSeries *latency_series_;
+    QValueAxis *latency_x_axis_;
+    QValueAxis *latency_y_axis_;
+    
+    // Zoom controls
     QSlider *zoom_slider_;
     QLabel *zoom_label_;
     QLabel *zoom_value_label_;

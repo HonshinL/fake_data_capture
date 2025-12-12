@@ -1,16 +1,18 @@
 #include "rclcpp/rclcpp.hpp"
-#include "std_msgs/msg/float64.hpp"
+#include "fake_capture_msgs/msg/captured_data.hpp"  // 使用带有时间戳的消息类型
 #include <random>
 #include "fake_sensor_driver/fake_sensor_node.hpp"
 #include <chrono>
-#include <cmath> // Required for M_PI and sin function
+#include <cmath>  // 添加缺失的头文件
 
 using namespace std::chrono_literals;
 
-FakeSensorNode::FakeSensorNode() : Node("fake_sensor_node")
+FakeSensorNode::FakeSensorNode()
+    : rclcpp::Node("fake_sensor_node")  // 调用父类构造函数并提供节点名称
 {
   // 声明参数
-  declare_parameter<double>("frequency", 10.0);  // 默认10Hz
+  // 将默认频率从10Hz改为20Hz
+  declare_parameter<double>("frequency", 20.0);  // 默认20Hz
   declare_parameter<std::string>("mode", "random");  // 模式：random 或 sine
   declare_parameter<double>("amplitude", 10.0);  // 正弦波振幅
   declare_parameter<double>("offset", 0.0);  // 偏移量
@@ -24,7 +26,7 @@ FakeSensorNode::FakeSensorNode() : Node("fake_sensor_node")
   noise_ = get_parameter("noise").as_double();
 
   // 创建发布者
-  sensor_publisher_ = this->create_publisher<std_msgs::msg::Float64>("sensor_data", 10);
+  sensor_publisher_ = this->create_publisher<fake_capture_msgs::msg::CapturedData>("sensor_data", 10);
 
   // 创建定时器
   timer_ = this->create_wall_timer(
@@ -41,7 +43,7 @@ FakeSensorNode::FakeSensorNode() : Node("fake_sensor_node")
 
 void FakeSensorNode::timer_callback()
 {
-  auto message = std_msgs::msg::Float64();
+  auto message = fake_capture_msgs::msg::CapturedData();
   
   if (mode_ == "random") {
     // 生成随机数
@@ -52,8 +54,11 @@ void FakeSensorNode::timer_callback()
     message.data = offset_ + amplitude_ * sin(2 * M_PI * 2 * time) + distribution_(generator_) * noise_;
   }
 
+  // 添加时间戳（采集时间）
+  message.stamp = this->now();
+
   sensor_publisher_->publish(message);
-  RCLCPP_DEBUG(this->get_logger(), "Published data: %.4f", message.data);
+  RCLCPP_DEBUG(this->get_logger(), "Published data: %.4f at time: %.6f", message.data, message.stamp.sec + message.stamp.nanosec / 1e9);
   
   // 更新计数器
   ++count_;

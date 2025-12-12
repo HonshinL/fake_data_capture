@@ -19,6 +19,7 @@ find_package(Qt5Core REQUIRED)
 find_package(Qt5Widgets REQUIRED)
 find_package(Qt5Gui REQUIRED)
 find_package(Qt5Charts REQUIRED)
+find_package(fake_capture_msgs REQUIRED)
 
 # Add executable
 add_executable(qt_visualization_node
@@ -48,6 +49,7 @@ target_link_libraries(qt_visualization_node
 ament_target_dependencies(qt_visualization_node
   rclcpp
   std_msgs
+  fake_capture_msgs
 )
 
 # Install executable

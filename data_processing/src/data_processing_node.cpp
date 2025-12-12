@@ -15,13 +15,13 @@ DataProcessingNode::DataProcessingNode(const rclcpp::NodeOptions & options)
     double processing_frequency = get_parameter("processing_frequency").as_double();
 
     // Create subscription to sensor data
-    sensor_subscription_ = this->create_subscription<std_msgs::msg::Float64>(
+    sensor_subscription_ = this->create_subscription<fake_capture_msgs::msg::CapturedData>(
         "sensor_data",
         10,
         std::bind(&DataProcessingNode::sensor_data_callback, this, std::placeholders::_1));
 
     // Create publisher for processed data
-    processed_data_publisher_ = this->create_publisher<std_msgs::msg::Float64>(
+    processed_data_publisher_ = this->create_publisher<fake_capture_msgs::msg::CapturedData>(
         "processed_sensor_data",
         10);
 
@@ -39,25 +39,26 @@ void DataProcessingNode::process_data_thread()
     auto short_sleep = std::chrono::milliseconds(1); // Short sleep interval
 
     while (rclcpp::ok() && !stop_thread_) {
-        double data;
+        auto start_time = std::chrono::steady_clock::now();
         
-        // Pop data from FIFO if available
-        if (data_fifo_.pop(data)) {
+        // 处理队列中的所有可用数据点
+        DataWithTimestamp data_with_ts;
+        while (data_fifo_.pop(data_with_ts)) {
             // Process the data
-            double processed_data = process_data(data);
+            double processed_data = process_data(data_with_ts.data);
             
-            // Emit Qt signal with the processed data
-            emit dataReady(processed_data);
+            // Emit Qt signal with processed data and original timestamp
+            emit dataReady(processed_data, data_with_ts.timestamp);
             
             // Publish processed data to ROS2 topic
-            auto message = std_msgs::msg::Float64();
+            auto message = fake_capture_msgs::msg::CapturedData();
             message.data = processed_data;
+            message.stamp = data_with_ts.timestamp; // 保留原始时间戳
             processed_data_publisher_->publish(message);
         }
 
         // Use multiple short sleeps to maintain processing frequency
         // while allowing for responsive termination
-        auto start_time = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration<double>::zero();
         
         while (elapsed < total_interval && rclcpp::ok() && !stop_thread_) {
@@ -93,10 +94,15 @@ DataProcessingNode::~DataProcessingNode()
     RCLCPP_INFO(this->get_logger(), "Data Processing Node shutdown complete");
 }
 
-void DataProcessingNode::sensor_data_callback(const std_msgs::msg::Float64::SharedPtr msg)
+void DataProcessingNode::sensor_data_callback(const fake_capture_msgs::msg::CapturedData::SharedPtr msg)
 {
+    // 创建包含数据和时间戳的结构体
+    DataWithTimestamp data_with_ts;
+    data_with_ts.data = msg->data;
+    data_with_ts.timestamp = msg->stamp;
+    
     // Push received data to FIFO
-    if (!data_fifo_.push(msg->data)) {
+    if (!data_fifo_.push(data_with_ts)) {
         RCLCPP_WARN(this->get_logger(), "FIFO is full, overwriting oldest data");
     }
 }

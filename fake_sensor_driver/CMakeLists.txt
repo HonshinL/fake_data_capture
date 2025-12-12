@@ -9,6 +9,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(fake_capture_msgs REQUIRED)
 
 # 创建库
 add_library(fake_sensor_node_lib
@@ -22,7 +23,7 @@ target_include_directories(fake_sensor_node_lib PUBLIC
 )
 
 # 设置库的依赖
-ament_target_dependencies(fake_sensor_node_lib rclcpp std_msgs)
+ament_target_dependencies(fake_sensor_node_lib rclcpp std_msgs fake_capture_msgs)
 
 # 创建可执行文件
 add_executable(fake_sensor_node 
