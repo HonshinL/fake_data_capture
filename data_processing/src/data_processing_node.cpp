@@ -67,17 +67,20 @@ void DataProcessingNode::process_data_thread()
 {
     DataWithTimestamp data_with_ts;
     
-    while (rclcpp::ok() && !stop_thread_) {
+    while (!stop_thread_ && rclcpp::ok()) {  // 先检查stop_thread_，再检查rclcpp::ok()
         // 使用阻塞方式等待新数据，超时时间为100ms
         if (data_fifo_.pop_blocking(data_with_ts)) {
             // 处理数据
             double processed_data = process_data(data_with_ts.data);
             
-            // 发布处理后的数据
-            auto message = fake_capture_msgs::msg::CapturedData();
-            message.data = processed_data;
-            message.stamp = data_with_ts.timestamp; // 保留原始时间戳
-            processed_data_publisher_->publish(message);
+            // 检查ROS2是否仍在运行，再发布数据
+            if (rclcpp::ok()) {
+                // 发布处理后的数据
+                auto message = fake_capture_msgs::msg::CapturedData();
+                message.data = processed_data;
+                message.stamp = data_with_ts.timestamp; // 保留原始时间戳
+                processed_data_publisher_->publish(message);
+            }
             
             // 发送Qt信号
             emit dataReady(processed_data, data_with_ts.timestamp);
