@@ -57,24 +57,24 @@ void VisualizationWindow::init_ui()
 {
     // Set window properties
     setWindowTitle("Sensor Data Visualization");
-    resize(1800, 1000);  // 增加窗口初始大小
+    resize(1800, 1200);  // 增加窗口初始大小以容纳两个图表
 
     // Create central widget and main layout
     central_widget_ = new QWidget(this);
     setCentralWidget(central_widget_);
     main_layout_ = new QVBoxLayout(central_widget_);
 
-    // Create chart and chart view
+    // Create main data chart and chart view
     chart_ = new QChart();
     chart_view_ = new QChartView(chart_);
     chart_view_->setRenderHint(QPainter::Antialiasing);
 
-    // Create data series
+    // Create main data series
     series_ = new QLineSeries();
     series_->setName("Sensor Data");
     chart_->addSeries(series_);
 
-    // Create axes
+    // Create main data axes
     x_axis_ = new QValueAxis();
     x_axis_->setTitleText("Time (s)");
     x_axis_->setRange(0, max_data_points_);  // Start from time 0
@@ -88,14 +88,47 @@ void VisualizationWindow::init_ui()
     y_axis_->setTickCount(11);
     y_axis_->setLabelsFont(QFont("Arial", 8));  // 设置Y轴数字显示大小
 
-    // Add axes to chart
+    // Add main data axes to chart
     chart_->addAxis(x_axis_, Qt::AlignBottom);
     chart_->addAxis(y_axis_, Qt::AlignLeft);
     series_->attachAxis(x_axis_);
     series_->attachAxis(y_axis_);
 
-    // Add chart view to main layout
+    // Add main data chart view to main layout
     main_layout_->addWidget(chart_view_);
+    
+    // Create latency chart and chart view
+    latency_chart_ = new QChart();
+    latency_chart_view_ = new QChartView(latency_chart_);
+    latency_chart_view_->setRenderHint(QPainter::Antialiasing);
+
+    // Create latency data series
+    latency_series_ = new QLineSeries();
+    latency_series_->setName("Latency (ms)");
+    latency_chart_->addSeries(latency_series_);
+
+    // Create latency data axes
+    latency_x_axis_ = new QValueAxis();
+    latency_x_axis_->setTitleText("Time (s)");
+    latency_x_axis_->setRange(0, max_data_points_);  // Start from time 0
+    latency_x_axis_->setTickCount(11);
+    latency_x_axis_->setLabelFormat("%.1f");  // Show one decimal place for time
+    latency_x_axis_->setLabelsFont(QFont("Arial", 8));  // 设置X轴数字显示大小
+
+    latency_y_axis_ = new QValueAxis();
+    latency_y_axis_->setTitleText("Latency (ms)");
+    latency_y_axis_->setRange(0, 100);  // Initial range for latency (milliseconds)
+    latency_y_axis_->setTickCount(11);
+    latency_y_axis_->setLabelsFont(QFont("Arial", 8));  // 设置Y轴数字显示大小
+
+    // Add latency data axes to chart
+    latency_chart_->addAxis(latency_x_axis_, Qt::AlignBottom);
+    latency_chart_->addAxis(latency_y_axis_, Qt::AlignLeft);
+    latency_series_->attachAxis(latency_x_axis_);
+    latency_series_->attachAxis(latency_y_axis_);
+
+    // Add latency chart view to main layout
+    main_layout_->addWidget(latency_chart_view_);
 
     // Create zoom controls
     zoom_layout_ = new QHBoxLayout();
@@ -145,43 +178,58 @@ void VisualizationWindow::sensor_data_callback(const fake_capture_msgs::msg::Cap
     rclcpp::Time current_time = this->now();
     rclcpp::Duration time_diff = current_time - data_with_ts.timestamp;
     
-    // 将时间差输出到终端（毫秒）
-    std::cout << "数据采集和显示之间的时间差: " << time_diff.nanoseconds() / 1e6 << " 毫秒" << std::endl;
+    // 将时间差转换为毫秒
+    double latency_ms = time_diff.nanoseconds() / 1e6;
     
-    // 直接更新图表
-    updateChart(data_with_ts.data);
+    // 将时间差输出到终端（毫秒）
+    std::cout << "数据采集和显示之间的时间差: " << latency_ms << " 毫秒" << std::endl;
+    
+    // 直接更新图表，同时传递原始数据和延迟数据
+    updateChart(data_with_ts.data, latency_ms);
 }
 
-void VisualizationWindow::updateChart(double value)
+void VisualizationWindow::updateChart(double value, double latency)
 {
     // Add new data point at current time (x_counter_ starts from 0)
     all_data_points_.append(QPointF(x_counter_, value));
+    
+    // Add new latency point at current time
+    all_latency_points_.append(QPointF(x_counter_, latency));
+    
     x_counter_ += 1.0;  // Increment time counter (assuming 1 unit = 1 second)
 
     // Control memory usage: remove oldest data if we exceed max storage
     if (static_cast<size_t>(all_data_points_.size()) > max_storage_points_) {
         all_data_points_.removeFirst();
     }
+    
+    if (static_cast<size_t>(all_latency_points_.size()) > max_storage_points_) {
+        all_latency_points_.removeFirst();
+    }
 
     // Determine which data points to display based on max_data_points_
-    QVector<QPointF> display_points;
-    int total_points = all_data_points_.size();
-    int start_index = std::max(0, total_points - static_cast<int>(max_data_points_));
+    QVector<QPointF> display_data_points;
+    QVector<QPointF> display_latency_points;
     
-    for (int i = start_index; i < total_points; ++i) {
-        display_points.append(all_data_points_[i]);
+    int total_data_points = all_data_points_.size();
+    int start_index = std::max(0, total_data_points - static_cast<int>(max_data_points_));
+    
+    for (int i = start_index; i < total_data_points; ++i) {
+        display_data_points.append(all_data_points_[i]);
+        display_latency_points.append(all_latency_points_[i]);
     }
 
     // Update series data
-    series_->replace(display_points);
+    series_->replace(display_data_points);
+    latency_series_->replace(display_latency_points);
 
-    // Auto-adjust axes
-    if (display_points.size() > 0) {
+    // Auto-adjust axes for main data chart
+    if (display_data_points.size() > 0) {
         // Adjust Y axis range to show all displayed data
-        double y_min = display_points.first().y();
-        double y_max = display_points.first().y();
+        double y_min = display_data_points.first().y();
+        double y_max = display_data_points.first().y();
         
-        for (const auto &point : display_points) {
+        for (const auto &point : display_data_points) {
             y_min = std::min(y_min, point.y());
             y_max = std::max(y_max, point.y());
         }
@@ -195,15 +243,37 @@ void VisualizationWindow::updateChart(double value)
         y_axis_->setRange(y_min - y_padding, y_max + y_padding);
         
         // Adjust X axis range based on current display data
-        if (static_cast<size_t>(total_points) < max_data_points_) {
+        if (static_cast<size_t>(total_data_points) < max_data_points_) {
             // Still filling the window, show from time 0
             x_axis_->setRange(0, max_data_points_);
+            latency_x_axis_->setRange(0, max_data_points_);
         } else {
             // Window is full, show last max_data_points_ seconds
             double x_end = x_counter_;
             double x_start = x_end - max_data_points_;
             x_axis_->setRange(x_start, x_end);
+            latency_x_axis_->setRange(x_start, x_end);
         }
+    }
+    
+    // Auto-adjust axes for latency chart
+    if (display_latency_points.size() > 0) {
+        // Adjust Y axis range to show all displayed latency data
+        double latency_min = display_latency_points.first().y();
+        double latency_max = display_latency_points.first().y();
+        
+        for (const auto &point : display_latency_points) {
+            latency_min = std::min(latency_min, point.y());
+            latency_max = std::max(latency_max, point.y());
+        }
+        
+        // Add some padding
+        double latency_padding = (latency_max - latency_min) * 0.1;
+        if (latency_padding == 0) {
+            latency_padding = 5.0;  // Minimum padding for latency
+        }
+        
+        latency_y_axis_->setRange(latency_min - latency_padding, latency_max + latency_padding);
     }
 }
 
@@ -216,26 +286,32 @@ void VisualizationWindow::zoomChanged(int value)
     zoom_value_label_->setText(QString("%1 points").arg(value));
     
     // Determine which data points to display based on new max_data_points_
-    QVector<QPointF> display_points;
-    int total_points = all_data_points_.size();
-    int start_index = std::max(0, total_points - static_cast<int>(max_data_points_));
+    QVector<QPointF> display_data_points;
+    QVector<QPointF> display_latency_points;
     
-    for (int i = start_index; i < total_points; ++i) {
-        display_points.append(all_data_points_[i]);
+    int total_data_points = all_data_points_.size();
+    int start_index = std::max(0, total_data_points - static_cast<int>(max_data_points_));
+    
+    for (int i = start_index; i < total_data_points; ++i) {
+        display_data_points.append(all_data_points_[i]);
+        display_latency_points.append(all_latency_points_[i]);
     }
     
-    // Update chart to reflect new zoom level
-    series_->replace(display_points);
+    // Update charts to reflect new zoom level
+    series_->replace(display_data_points);
+    latency_series_->replace(display_latency_points);
     
-    // Update X axis range
-    if (static_cast<size_t>(total_points) < max_data_points_) {
+    // Update X axis ranges
+    if (static_cast<size_t>(total_data_points) < max_data_points_) {
         // Still filling the window, show from time 0
         x_axis_->setRange(0, max_data_points_);
+        latency_x_axis_->setRange(0, max_data_points_);
     } else {
         // Window is full, show last max_data_points_ seconds
         double x_end = x_counter_;
         double x_start = x_end - max_data_points_;
         x_axis_->setRange(x_start, x_end);
+        latency_x_axis_->setRange(x_start, x_end);
     }
 }
 

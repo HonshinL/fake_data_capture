@@ -32,8 +32,8 @@ public:
     ~VisualizationWindow() override;
 
 private slots:
-    // Slot to update chart with new data
-    void updateChart(double value);
+    // Slot to update charts with new data
+    void updateChart(double value, double latency);
     
     // Slot for timer to update UI
     void timerUpdate();
@@ -60,6 +60,7 @@ private:
     
     // Data storage and counters
     QList<QPointF> all_data_points_;
+    QList<QPointF> all_latency_points_;  // 存储延迟数据点
     double x_counter_;
     size_t max_storage_points_;
     size_t max_data_points_;
@@ -67,12 +68,21 @@ private:
     // Timer for UI updates
     QTimer *update_timer_;
     
-    // UI components
+    // UI components for main data chart
     QChartView *chart_view_;
     QChart *chart_;
     QLineSeries *series_;
     QValueAxis *x_axis_;
     QValueAxis *y_axis_;
+    
+    // UI components for latency chart
+    QChartView *latency_chart_view_;
+    QChart *latency_chart_;
+    QLineSeries *latency_series_;
+    QValueAxis *latency_x_axis_;
+    QValueAxis *latency_y_axis_;
+    
+    // Zoom controls
     QSlider *zoom_slider_;
     QLabel *zoom_label_;
     QLabel *zoom_value_label_;
