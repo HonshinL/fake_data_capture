@@ -11,11 +11,17 @@
 #include <QLabel>
 #include <QHBoxLayout>
 #include <rclcpp/rclcpp.hpp>
-#include <fake_capture_msgs/msg/captured_data.hpp>  // 改为正确的消息类型
+#include <fake_capture_msgs/msg/captured_data.hpp>  // 使用带有时间戳的消息类型
 #include <queue>      // 添加queue头文件
 #include <mutex>      // 添加mutex头文件
 
 QT_CHARTS_USE_NAMESPACE
+
+// 自定义结构体，包含数据和时间戳
+struct DataWithTimestamp {
+  double data;
+  rclcpp::Time timestamp;
+};
 
 class VisualizationWindow : public QMainWindow, public rclcpp::Node
 {
@@ -43,13 +49,13 @@ private:
     // Helper methods
     void init_ui();
     void init_ros2();
-    void sensor_data_callback(const fake_capture_msgs::msg::CapturedData::SharedPtr msg);  // 改为正确的消息类型
+    void sensor_data_callback(const fake_capture_msgs::msg::CapturedData::SharedPtr msg);  // 使用带有时间戳的消息类型
     
     // ROS2 subscription for sensor data
-    rclcpp::Subscription<fake_capture_msgs::msg::CapturedData>::SharedPtr sensor_subscription_;  // 改为正确的消息类型
+    rclcpp::Subscription<fake_capture_msgs::msg::CapturedData>::SharedPtr sensor_subscription_;  // 使用带有时间戳的消息类型
     
-    // Thread-safe data queue
-    std::queue<double> data_queue_;
+    // Thread-safe data queue (包含时间戳)
+    std::queue<DataWithTimestamp> data_queue_;
     std::mutex queue_mutex_;
     
     // Data storage and counters

@@ -3,7 +3,7 @@
 #include <chrono>
 #include <iostream>
 #include <QCloseEvent>
-#include <fake_capture_msgs/msg/captured_data.hpp>  // 添加正确的消息类型头文件
+#include <fake_capture_msgs/msg/captured_data.hpp>  // 使用带有时间戳的消息类型
 
 using namespace std::chrono_literals;
 
@@ -133,27 +133,39 @@ void VisualizationWindow::init_ros2()
 
 void VisualizationWindow::sensor_data_callback(const fake_capture_msgs::msg::CapturedData::SharedPtr msg)
 {
+    // 创建包含数据和时间戳的结构体
+    DataWithTimestamp data_with_ts;
+    data_with_ts.data = msg->data;
+    data_with_ts.timestamp = msg->stamp;
+    
     // Add data to thread-safe queue
     std::lock_guard<std::mutex> lock(queue_mutex_);
-    data_queue_.push(msg->data);
+    data_queue_.push(data_with_ts);
 }
 
 void VisualizationWindow::timerUpdate()
 {
     // Process all pending data points
     while (true) {
-        double value;
+        DataWithTimestamp data_with_ts;
         {
             std::lock_guard<std::mutex> lock(queue_mutex_);
             if (data_queue_.empty()) {
                 break;
             }
-            value = data_queue_.front();
+            data_with_ts = data_queue_.front();
             data_queue_.pop();
         }
         
+        // 计算数据采集和显示之间的时间差
+        rclcpp::Time current_time = this->now();
+        rclcpp::Duration time_diff = current_time - data_with_ts.timestamp;
+        
+        // 将时间差输出到终端（毫秒）
+        std::cout << "数据采集和显示之间的时间差: " << time_diff.nanoseconds() / 1e6 << " 毫秒" << std::endl;
+        
         // Update chart
-        updateChart(value);
+        updateChart(data_with_ts.data);
     }
 }
 
