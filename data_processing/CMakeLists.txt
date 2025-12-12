@@ -10,6 +10,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(Qt5Core REQUIRED)
+find_package(fake_capture_msgs REQUIRED)
 
 # Qt related configuration
 set(CMAKE_AUTOMOC ON)
@@ -46,6 +47,7 @@ target_link_libraries(data_processing_lib
 ament_target_dependencies(data_processing_lib
   rclcpp
   std_msgs
+  fake_capture_msgs
 )
 
 # Add executable - main.cpp doesn't need MOC

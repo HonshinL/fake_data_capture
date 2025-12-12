@@ -11,6 +11,7 @@
 
   <depend>rclcpp</depend>
   <depend>std_msgs</depend>
+  <depend>fake_capture_msgs</depend>
   <depend>Qt5Core</depend>
   <depend>Qt5Widgets</depend>
   <depend>Qt5Gui</depend>

@@ -3,6 +3,7 @@
 #include <chrono>
 #include <iostream>
 #include <QCloseEvent>
+#include <fake_capture_msgs/msg/captured_data.hpp>  // 添加正确的消息类型头文件
 
 using namespace std::chrono_literals;
 
@@ -120,7 +121,7 @@ void VisualizationWindow::init_ui()
 void VisualizationWindow::init_ros2()
 {
     // Create subscription to processed sensor data topic instead of raw data
-    sensor_subscription_ = this->create_subscription<std_msgs::msg::Float64>(
+    sensor_subscription_ = this->create_subscription<fake_capture_msgs::msg::CapturedData>(
         "processed_sensor_data",  // Changed from "sensor_data" to "processed_sensor_data"
         10,
         std::bind(&VisualizationWindow::sensor_data_callback, this, std::placeholders::_1));
@@ -128,7 +129,7 @@ void VisualizationWindow::init_ros2()
     RCLCPP_INFO(this->get_logger(), "Visualization window initialized");
 }
 
-void VisualizationWindow::sensor_data_callback(const std_msgs::msg::Float64::SharedPtr msg)
+void VisualizationWindow::sensor_data_callback(const fake_capture_msgs::msg::CapturedData::SharedPtr msg)
 {
     // Add data to thread-safe queue
     std::lock_guard<std::mutex> lock(queue_mutex_);

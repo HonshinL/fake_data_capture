@@ -2,11 +2,17 @@
 #define DATA_PROCESSING__DATA_PROCESSING_NODE_HPP_
 
 #include "rclcpp/rclcpp.hpp"
-#include "std_msgs/msg/float64.hpp"
+#include "fake_capture_msgs/msg/captured_data.hpp"  // 使用带有时间戳的消息类型
 #include "software_fifo.hpp"
 #include <QtCore>
 #include <thread>
 #include <atomic>
+
+// 自定义结构体，包含数据和时间戳
+struct DataWithTimestamp {
+  double data;
+  rclcpp::Time timestamp;
+};
 
 class DataProcessingNode : public QObject, public rclcpp::Node
 {
@@ -18,11 +24,11 @@ public:
 
 signals:
     // Qt signal to emit processed data
-    void dataReady(double value);
+    void dataReady(double value, rclcpp::Time timestamp);
 
 private:
     // ROS2 subscription callback
-    void sensor_data_callback(const std_msgs::msg::Float64::SharedPtr msg);
+    void sensor_data_callback(const fake_capture_msgs::msg::CapturedData::SharedPtr msg);
 
     // Process data in a separate thread
     void process_data_thread();
@@ -31,11 +37,11 @@ private:
     double process_data(double raw_data);
 
     // ROS2 subscription and publisher
-    rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr sensor_subscription_;
-    rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr processed_data_publisher_;
+    rclcpp::Subscription<fake_capture_msgs::msg::CapturedData>::SharedPtr sensor_subscription_;
+    rclcpp::Publisher<fake_capture_msgs::msg::CapturedData>::SharedPtr processed_data_publisher_;
 
-    // Software FIFO for data buffering
-    SoftwareFIFO<double> data_fifo_;
+    // Software FIFO for data buffering (包含时间戳)
+    SoftwareFIFO<DataWithTimestamp> data_fifo_;
 
     // Thread for data processing
     std::thread processing_thread_;

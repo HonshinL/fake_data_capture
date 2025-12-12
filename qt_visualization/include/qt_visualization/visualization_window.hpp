@@ -11,7 +11,7 @@
 #include <QLabel>
 #include <QHBoxLayout>
 #include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/float64.hpp>
+#include <fake_capture_msgs/msg/captured_data.hpp>  // 改为正确的消息类型
 #include <queue>      // 添加queue头文件
 #include <mutex>      // 添加mutex头文件
 
@@ -43,10 +43,10 @@ private:
     // Helper methods
     void init_ui();
     void init_ros2();
-    void sensor_data_callback(const std_msgs::msg::Float64::SharedPtr msg);
+    void sensor_data_callback(const fake_capture_msgs::msg::CapturedData::SharedPtr msg);  // 改为正确的消息类型
     
     // ROS2 subscription for sensor data
-    rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr sensor_subscription_;
+    rclcpp::Subscription<fake_capture_msgs::msg::CapturedData>::SharedPtr sensor_subscription_;  // 改为正确的消息类型
     
     // Thread-safe data queue
     std::queue<double> data_queue_;
