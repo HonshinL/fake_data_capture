@@ -25,8 +25,14 @@ FakeSensorNode::FakeSensorNode()
   offset_ = get_parameter("offset").as_double();
   noise_ = get_parameter("noise").as_double();
 
+  // 创建实时性QoS配置
+  rclcpp::QoS qos_profile(rclcpp::KeepLast(1));  // 只保留最新1条消息
+  qos_profile.best_effort();  // 使用尽力而为传输
+  qos_profile.deadline(std::chrono::milliseconds(100));  // 设置截止时间
+  qos_profile.lifespan(std::chrono::milliseconds(200));  // 设置消息生命周期
+
   // 创建发布者
-  sensor_publisher_ = this->create_publisher<fake_capture_msgs::msg::CapturedData>("sensor_data", 10);
+  sensor_publisher_ = this->create_publisher<fake_capture_msgs::msg::CapturedData>("sensor_data", qos_profile);
 
   // 创建定时器
   timer_ = this->create_wall_timer(

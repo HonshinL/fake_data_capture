@@ -5,7 +5,7 @@ using namespace std::chrono_literals;
 
 DataProcessingNode::DataProcessingNode(const rclcpp::NodeOptions & options)
     : Node("data_processing_node", options),
-      data_fifo_(1000),  // FIFO with capacity 1000
+      data_fifo_(100),  // 减小FIFO容量以减少延迟
       stop_thread_(false)
 {
     // Declare parameters
@@ -14,16 +14,22 @@ DataProcessingNode::DataProcessingNode(const rclcpp::NodeOptions & options)
     // Get parameters
     double processing_frequency = get_parameter("processing_frequency").as_double();
 
+    // 创建实时性QoS配置
+    rclcpp::QoS qos_profile(rclcpp::KeepLast(1));  // 只保留最新1条消息
+    qos_profile.best_effort();  // 使用尽力而为传输
+    qos_profile.deadline(std::chrono::milliseconds(100));  // 设置截止时间
+    qos_profile.lifespan(std::chrono::milliseconds(200));  // 设置消息生命周期
+
     // Create subscription to sensor data
     sensor_subscription_ = this->create_subscription<fake_capture_msgs::msg::CapturedData>(
         "sensor_data",
-        10,
+        qos_profile,
         std::bind(&DataProcessingNode::sensor_data_callback, this, std::placeholders::_1));
 
     // Create publisher for processed data
     processed_data_publisher_ = this->create_publisher<fake_capture_msgs::msg::CapturedData>(
         "processed_sensor_data",
-        10);
+        qos_profile);
 
     // Start processing thread
     processing_thread_ = std::thread(&DataProcessingNode::process_data_thread, this);
