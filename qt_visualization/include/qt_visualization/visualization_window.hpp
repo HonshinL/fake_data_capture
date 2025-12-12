@@ -85,6 +85,12 @@ private:
     QValueAxis *latency_x_axis_;
     QValueAxis *latency_y_axis_;
     
+    // UI components for average latency display
+    QLabel *average_latency_label_;  // 显示平均延迟的标签
+    QLineSeries *average_latency_series_;  // 平均延迟的曲线
+    double total_latency_;  // 总延迟，用于计算平均值
+    int latency_point_count_;  // 延迟数据点数量
+    
     // Zoom controls
     QSlider *zoom_slider_;
     QLabel *zoom_label_;

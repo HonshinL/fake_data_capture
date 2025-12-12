@@ -15,7 +15,9 @@ VisualizationWindow::VisualizationWindow(const rclcpp::NodeOptions & options, QW
       rclcpp::Node("visualization_window", options),
       x_counter_(0.0),
       max_storage_points_(10000),  // 最大存储10000个点
-      max_data_points_(200)  // 默认显示500个点
+      max_data_points_(200),  // 默认显示500个点
+      total_latency_(0.0),  // 初始化总延迟
+      latency_point_count_(0)  // 初始化延迟点计数
 {
     init_ui();
     init_ros2();
@@ -109,6 +111,13 @@ void VisualizationWindow::init_ui()
     latency_series_ = new QLineSeries();
     latency_series_->setName("Latency (ms)");
     latency_chart_->addSeries(latency_series_);
+    
+    // Create average latency series
+    average_latency_series_ = new QLineSeries();
+    average_latency_series_->setName("Average Latency (ms)");
+    average_latency_series_->setColor(QColor("red"));  // 使用红色区分
+    average_latency_series_->setPen(QPen(Qt::red, 2, Qt::DashLine));  // 红色虚线
+    latency_chart_->addSeries(average_latency_series_);
 
     // Create latency data axes
     latency_x_axis_ = new QValueAxis();
@@ -129,9 +138,18 @@ void VisualizationWindow::init_ui()
     latency_chart_->addAxis(latency_y_axis_, Qt::AlignLeft);
     latency_series_->attachAxis(latency_x_axis_);
     latency_series_->attachAxis(latency_y_axis_);
+    average_latency_series_->attachAxis(latency_x_axis_);  // 平均延迟曲线也附加到X轴
+    average_latency_series_->attachAxis(latency_y_axis_);  // 平均延迟曲线也附加到Y轴
 
     // Add latency chart view to main layout
     main_layout_->addWidget(latency_chart_view_);
+
+    // Create average latency label
+    average_latency_label_ = new QLabel(this);
+    average_latency_label_->setText("Average Latency: 0.0 ms");
+    average_latency_label_->setAlignment(Qt::AlignCenter);
+    average_latency_label_->setStyleSheet("font-size: 16px; font-weight: bold; color: red;");
+    main_layout_->addWidget(average_latency_label_);
 
     // Create zoom controls
     zoom_layout_ = new QHBoxLayout();
@@ -204,6 +222,13 @@ void VisualizationWindow::updateChart(double value, double latency)
     // Add new latency point at current time
     all_latency_points_.append(QPointF(x_counter_, latency));
     
+    // Update total latency and count for average calculation
+    total_latency_ += latency;
+    latency_point_count_++;
+    
+    // Calculate average latency
+    double average_latency = (latency_point_count_ > 0) ? (total_latency_ / latency_point_count_) : 0.0;
+    
     x_counter_ += 1.0;  // Increment time counter (assuming 1 unit = 1 second)
 
     // Control memory usage: remove oldest data if we exceed max storage
@@ -212,12 +237,19 @@ void VisualizationWindow::updateChart(double value, double latency)
     }
     
     if (static_cast<size_t>(all_latency_points_.size()) > max_storage_points_) {
+        // Subtract the removed latency from total before removing it
+        total_latency_ -= all_latency_points_.first().y();
         all_latency_points_.removeFirst();
+        latency_point_count_--;
+        
+        // Recalculate average if we removed a point
+        average_latency = (latency_point_count_ > 0) ? (total_latency_ / latency_point_count_) : 0.0;
     }
 
     // Determine which data points to display based on max_data_points_
     QVector<QPointF> display_data_points;
     QVector<QPointF> display_latency_points;
+    QVector<QPointF> display_average_points;  // 用于显示平均延迟的点
     
     int total_data_points = all_data_points_.size();
     int start_index = std::max(0, total_data_points - static_cast<int>(max_data_points_));
@@ -225,11 +257,16 @@ void VisualizationWindow::updateChart(double value, double latency)
     for (int i = start_index; i < total_data_points; ++i) {
         display_data_points.append(all_data_points_[i]);
         display_latency_points.append(all_latency_points_[i]);
+        display_average_points.append(QPointF(all_latency_points_[i].x(), average_latency));  // 每个X位置都显示当前平均值
     }
 
     // Update series data
     series_->replace(display_data_points);
     latency_series_->replace(display_latency_points);
+    average_latency_series_->replace(display_average_points);  // 更新平均延迟曲线
+
+    // Update average latency label
+    average_latency_label_->setText(QString("Average Latency: %1 ms").arg(average_latency, 0, 'f', 2));
 
     // Auto-adjust axes for main data chart
     if (display_data_points.size() > 0) {
@@ -275,6 +312,10 @@ void VisualizationWindow::updateChart(double value, double latency)
             latency_max = std::max(latency_max, point.y());
         }
         
+        // Ensure average latency is also visible
+        latency_min = std::min(latency_min, average_latency);
+        latency_max = std::max(latency_max, average_latency);
+        
         // Add some padding
         double latency_padding = (latency_max - latency_min) * 0.1;
         if (latency_padding == 0) {
@@ -293,9 +334,13 @@ void VisualizationWindow::zoomChanged(int value)
     // Update slider label
     zoom_value_label_->setText(QString("%1 points").arg(value));
     
+    // Recalculate average latency
+    double average_latency = (latency_point_count_ > 0) ? (total_latency_ / latency_point_count_) : 0.0;
+    
     // Determine which data points to display based on new max_data_points_
     QVector<QPointF> display_data_points;
     QVector<QPointF> display_latency_points;
+    QVector<QPointF> display_average_points;  // 平均延迟点
     
     int total_data_points = all_data_points_.size();
     int start_index = std::max(0, total_data_points - static_cast<int>(max_data_points_));
@@ -303,11 +348,16 @@ void VisualizationWindow::zoomChanged(int value)
     for (int i = start_index; i < total_data_points; ++i) {
         display_data_points.append(all_data_points_[i]);
         display_latency_points.append(all_latency_points_[i]);
+        display_average_points.append(QPointF(all_latency_points_[i].x(), average_latency));  // 平均延迟曲线点
     }
     
     // Update charts to reflect new zoom level
     series_->replace(display_data_points);
     latency_series_->replace(display_latency_points);
+    average_latency_series_->replace(display_average_points);  // 更新平均延迟曲线
+    
+    // Update average latency label
+    average_latency_label_->setText(QString("Average Latency: %1 ms").arg(average_latency, 0, 'f', 2));
     
     // Update X axis ranges
     if (static_cast<size_t>(total_data_points) < max_data_points_) {
