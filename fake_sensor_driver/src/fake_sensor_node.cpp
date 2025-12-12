@@ -11,7 +11,8 @@ FakeSensorNode::FakeSensorNode()
     : rclcpp::Node("fake_sensor_node")  // 调用父类构造函数并提供节点名称
 {
   // 声明参数
-  declare_parameter<double>("frequency", 10.0);  // 默认10Hz
+  // 将默认频率从10Hz改为20Hz
+  declare_parameter<double>("frequency", 20.0);  // 默认20Hz
   declare_parameter<std::string>("mode", "random");  // 模式：random 或 sine
   declare_parameter<double>("amplitude", 10.0);  // 正弦波振幅
   declare_parameter<double>("offset", 0.0);  // 偏移量

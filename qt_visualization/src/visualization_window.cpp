@@ -117,16 +117,19 @@ void VisualizationWindow::init_ui()
     // Create update timer
     update_timer_ = new QTimer(this);
     connect(update_timer_, &QTimer::timeout, this, &VisualizationWindow::timerUpdate);
-    update_timer_->start(50);  // Update UI every 50ms
+    // 将UI更新定时器频率降低到1秒
+    update_timer_->start(1000);  // Update UI every 1 second
+    
 }
 
 void VisualizationWindow::init_ros2()
 {
     // Create subscription to processed sensor data topic instead of raw data
+    // 在init_ros2()函数中，将订阅者队列大小从10改为1
     sensor_subscription_ = this->create_subscription<fake_capture_msgs::msg::CapturedData>(
-        "processed_sensor_data",  // Changed from "sensor_data" to "processed_sensor_data"
-        10,
-        std::bind(&VisualizationWindow::sensor_data_callback, this, std::placeholders::_1));
+    "processed_sensor_data",
+    1,  // 这里仍然是10，建议改为1
+    std::bind(&VisualizationWindow::sensor_data_callback, this, std::placeholders::_1));
 
     RCLCPP_INFO(this->get_logger(), "Visualization window initialized");
 }
@@ -138,35 +141,15 @@ void VisualizationWindow::sensor_data_callback(const fake_capture_msgs::msg::Cap
     data_with_ts.data = msg->data;
     data_with_ts.timestamp = msg->stamp;
     
-    // Add data to thread-safe queue
-    std::lock_guard<std::mutex> lock(queue_mutex_);
-    data_queue_.push(data_with_ts);
-}
-
-void VisualizationWindow::timerUpdate()
-{
-    // Process all pending data points
-    while (true) {
-        DataWithTimestamp data_with_ts;
-        {
-            std::lock_guard<std::mutex> lock(queue_mutex_);
-            if (data_queue_.empty()) {
-                break;
-            }
-            data_with_ts = data_queue_.front();
-            data_queue_.pop();
-        }
-        
-        // 计算数据采集和显示之间的时间差
-        rclcpp::Time current_time = this->now();
-        rclcpp::Duration time_diff = current_time - data_with_ts.timestamp;
-        
-        // 将时间差输出到终端（毫秒）
-        std::cout << "数据采集和显示之间的时间差: " << time_diff.nanoseconds() / 1e6 << " 毫秒" << std::endl;
-        
-        // Update chart
-        updateChart(data_with_ts.data);
-    }
+    // 计算数据采集和显示之间的时间差
+    rclcpp::Time current_time = this->now();
+    rclcpp::Duration time_diff = current_time - data_with_ts.timestamp;
+    
+    // 将时间差输出到终端（毫秒）
+    std::cout << "数据采集和显示之间的时间差: " << time_diff.nanoseconds() / 1e6 << " 毫秒" << std::endl;
+    
+    // 直接更新图表
+    updateChart(data_with_ts.data);
 }
 
 void VisualizationWindow::updateChart(double value)
@@ -254,4 +237,10 @@ void VisualizationWindow::zoomChanged(int value)
         double x_start = x_end - max_data_points_;
         x_axis_->setRange(x_start, x_end);
     }
+}
+
+void VisualizationWindow::timerUpdate()
+{
+    // 不再处理数据队列，仅保持定时器运行以维持节点活动
+    // 可以添加一些定期维护任务，如清理内存等
 }

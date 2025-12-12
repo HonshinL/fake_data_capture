@@ -39,10 +39,11 @@ void DataProcessingNode::process_data_thread()
     auto short_sleep = std::chrono::milliseconds(1); // Short sleep interval
 
     while (rclcpp::ok() && !stop_thread_) {
-        DataWithTimestamp data_with_ts;
+        auto start_time = std::chrono::steady_clock::now();
         
-        // Pop data from FIFO if available
-        if (data_fifo_.pop(data_with_ts)) {
+        // 处理队列中的所有可用数据点
+        DataWithTimestamp data_with_ts;
+        while (data_fifo_.pop(data_with_ts)) {
             // Process the data
             double processed_data = process_data(data_with_ts.data);
             
@@ -58,7 +59,6 @@ void DataProcessingNode::process_data_thread()
 
         // Use multiple short sleeps to maintain processing frequency
         // while allowing for responsive termination
-        auto start_time = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration<double>::zero();
         
         while (elapsed < total_interval && rclcpp::ok() && !stop_thread_) {
