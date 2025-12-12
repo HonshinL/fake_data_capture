@@ -4,6 +4,7 @@
 #include <iostream>
 #include <QCloseEvent>
 #include <fake_capture_msgs/msg/captured_data.hpp>  // 使用带有时间戳的消息类型
+#include <QFont>
 
 using namespace std::chrono_literals;
 
@@ -106,6 +107,12 @@ void VisualizationWindow::init_ui()
     latency_series_ = new QLineSeries();
     latency_series_->setName("Latency (ms)");
     latency_chart_->addSeries(latency_series_);
+    
+    // 创建平均延迟线系列
+    average_latency_series_ = new QLineSeries();
+    average_latency_series_->setName("Average Latency (ms)");
+    average_latency_series_->setPen(QPen(Qt::red, 2, Qt::DashLine));  // 红色虚线
+    latency_chart_->addSeries(average_latency_series_);
 
     // Create latency data axes
     latency_x_axis_ = new QValueAxis();
@@ -126,6 +133,8 @@ void VisualizationWindow::init_ui()
     latency_chart_->addAxis(latency_y_axis_, Qt::AlignLeft);
     latency_series_->attachAxis(latency_x_axis_);
     latency_series_->attachAxis(latency_y_axis_);
+    average_latency_series_->attachAxis(latency_x_axis_);  // 平均线附加X轴
+    average_latency_series_->attachAxis(latency_y_axis_);  // 平均线附加Y轴
 
     // Add latency chart view to main layout
     main_layout_->addWidget(latency_chart_view_);
@@ -153,6 +162,12 @@ void VisualizationWindow::init_ui()
     // 将UI更新定时器频率降低到1秒
     update_timer_->start(1000);  // Update UI every 1 second
     
+    // 创建平均延迟显示标签
+    average_latency_label_ = new QLabel("Average Latency: 0.00 ms");
+    average_latency_label_->setAlignment(Qt::AlignCenter);
+    average_latency_label_->setFont(QFont("Arial", 12, QFont::Bold));
+    average_latency_label_->setStyleSheet("color: red;");
+    main_layout_->addWidget(average_latency_label_);
 }
 
 void VisualizationWindow::init_ros2()
@@ -201,6 +216,14 @@ void VisualizationWindow::updateChart(double value, double latency)
     // Add new latency point at current time
     all_latency_points_.append(QPointF(x_counter_, latency));
     
+    // 计算累积平均值并添加到存储列表
+    double cumulative_total = 0.0;
+    for (const auto &point : all_latency_points_) {
+        cumulative_total += point.y();
+    }
+    double cumulative_average = cumulative_total / all_latency_points_.size();
+    all_cumulative_average_points_.append(QPointF(x_counter_, cumulative_average));
+    
     x_counter_ += 1.0;  // Increment time counter (assuming 1 unit = 1 second)
 
     // Control memory usage: remove oldest data if we exceed max storage
@@ -211,10 +234,15 @@ void VisualizationWindow::updateChart(double value, double latency)
     if (static_cast<size_t>(all_latency_points_.size()) > max_storage_points_) {
         all_latency_points_.removeFirst();
     }
+    
+    if (static_cast<size_t>(all_cumulative_average_points_.size()) > max_storage_points_) {
+        all_cumulative_average_points_.removeFirst();
+    }
 
     // Determine which data points to display based on max_data_points_
     QVector<QPointF> display_data_points;
     QVector<QPointF> display_latency_points;
+    QVector<QPointF> display_cumulative_average_points;
     
     int total_data_points = all_data_points_.size();
     int start_index = std::max(0, total_data_points - static_cast<int>(max_data_points_));
@@ -222,11 +250,13 @@ void VisualizationWindow::updateChart(double value, double latency)
     for (int i = start_index; i < total_data_points; ++i) {
         display_data_points.append(all_data_points_[i]);
         display_latency_points.append(all_latency_points_[i]);
+        display_cumulative_average_points.append(all_cumulative_average_points_[i]);
     }
 
     // Update series data
     series_->replace(display_data_points);
     latency_series_->replace(display_latency_points);
+    average_latency_series_->replace(display_cumulative_average_points);  // 更新累积平均值曲线
 
     // Auto-adjust axes for main data chart
     if (display_data_points.size() > 0) {
@@ -267,7 +297,13 @@ void VisualizationWindow::updateChart(double value, double latency)
         double latency_min = display_latency_points.first().y();
         double latency_max = display_latency_points.first().y();
         
+        // 考虑累积平均值的范围
         for (const auto &point : display_latency_points) {
+            latency_min = std::min(latency_min, point.y());
+            latency_max = std::max(latency_max, point.y());
+        }
+        
+        for (const auto &point : display_cumulative_average_points) {
             latency_min = std::min(latency_min, point.y());
             latency_max = std::max(latency_max, point.y());
         }
@@ -279,6 +315,12 @@ void VisualizationWindow::updateChart(double value, double latency)
         }
         
         latency_y_axis_->setRange(latency_min - latency_padding, latency_max + latency_padding);
+        
+        // 计算当前显示范围内的最新平均值（用于标签显示）
+        double latest_average = display_cumulative_average_points.last().y();
+        
+        // 更新平均延迟标签（显示最新累积平均值）
+        average_latency_label_->setText(QString("Average Latency: %1 ms").arg(latest_average, 0, 'f', 2));
     }
 }
 
@@ -293,6 +335,7 @@ void VisualizationWindow::zoomChanged(int value)
     // Determine which data points to display based on new max_data_points_
     QVector<QPointF> display_data_points;
     QVector<QPointF> display_latency_points;
+    QVector<QPointF> display_cumulative_average_points;
     
     int total_data_points = all_data_points_.size();
     int start_index = std::max(0, total_data_points - static_cast<int>(max_data_points_));
@@ -300,11 +343,13 @@ void VisualizationWindow::zoomChanged(int value)
     for (int i = start_index; i < total_data_points; ++i) {
         display_data_points.append(all_data_points_[i]);
         display_latency_points.append(all_latency_points_[i]);
+        display_cumulative_average_points.append(all_cumulative_average_points_[i]);
     }
     
     // Update charts to reflect new zoom level
     series_->replace(display_data_points);
     latency_series_->replace(display_latency_points);
+    average_latency_series_->replace(display_cumulative_average_points);  // 更新累积平均值曲线
     
     // Update X axis ranges
     if (static_cast<size_t>(total_data_points) < max_data_points_) {
@@ -317,6 +362,12 @@ void VisualizationWindow::zoomChanged(int value)
         double x_start = x_end - max_data_points_;
         x_axis_->setRange(x_start, x_end);
         latency_x_axis_->setRange(x_start, x_end);
+    }
+    
+    // 更新平均延迟标签（显示最新累积平均值）
+    if (display_cumulative_average_points.size() > 0) {
+        double latest_average = display_cumulative_average_points.last().y();
+        average_latency_label_->setText(QString("Average Latency: %1 ms").arg(latest_average, 0, 'f', 2));
     }
 }
 

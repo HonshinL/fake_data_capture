@@ -61,6 +61,7 @@ private:
     // Data storage and counters
     QList<QPointF> all_data_points_;
     QList<QPointF> all_latency_points_;  // 存储延迟数据点
+    QList<QPointF> all_cumulative_average_points_;  // 存储累积平均值数据点
     double x_counter_;
     size_t max_storage_points_;
     size_t max_data_points_;
@@ -79,6 +80,7 @@ private:
     QChartView *latency_chart_view_;
     QChart *latency_chart_;
     QLineSeries *latency_series_;
+    QLineSeries *average_latency_series_;  // 平均线系列
     QValueAxis *latency_x_axis_;
     QValueAxis *latency_y_axis_;
     
@@ -89,6 +91,9 @@ private:
     QWidget *central_widget_;
     QVBoxLayout *main_layout_;
     QHBoxLayout *zoom_layout_;
+    
+    // Average latency display
+    QLabel *average_latency_label_;  // 显示平均延迟
 };
 
 #endif  // QT_VISUALIZATION__VISUALIZATION_WINDOW_HPP_
