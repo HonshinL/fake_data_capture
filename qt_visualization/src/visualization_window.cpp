@@ -4,12 +4,15 @@
 #include <iostream>
 #include <QCloseEvent>
 #include <fake_capture_msgs/msg/captured_data.hpp>  // 使用带有时间戳的消息类型
+#include "rclcpp_components/register_node_macro.hpp"
 
 using namespace std::chrono_literals;
 
-VisualizationWindow::VisualizationWindow(QWidget *parent)
+namespace qt_visualization {
+
+VisualizationWindow::VisualizationWindow(const rclcpp::NodeOptions & options, QWidget *parent)
     : QMainWindow(parent),
-      rclcpp::Node("visualization_window"),
+      rclcpp::Node("visualization_window", options),
       x_counter_(0.0),
       max_storage_points_(10000),  // 最大存储10000个点
       max_data_points_(200)  // 默认显示500个点
@@ -324,4 +327,5 @@ void VisualizationWindow::timerUpdate()
 {
     // 不再处理数据队列，仅保持定时器运行以维持节点活动
     // 可以添加一些定期维护任务，如清理内存等
+}
 }

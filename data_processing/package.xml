@@ -10,6 +10,7 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
   <depend>std_msgs</depend>
   <depend>Qt5Core</depend>
   <depend>fake_capture_msgs</depend>

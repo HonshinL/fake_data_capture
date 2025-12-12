@@ -11,11 +11,14 @@
 #include <QLabel>
 #include <QHBoxLayout>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_components/register_node_macro.hpp>
 #include <fake_capture_msgs/msg/captured_data.hpp>  // 使用带有时间戳的消息类型
 #include <queue>      // 添加queue头文件
 #include <mutex>      // 添加mutex头文件
 
 QT_CHARTS_USE_NAMESPACE
+
+namespace qt_visualization {
 
 // 自定义结构体，包含数据和时间戳
 struct DataWithTimestamp {
@@ -28,7 +31,7 @@ class VisualizationWindow : public QMainWindow, public rclcpp::Node
     Q_OBJECT
 
 public:
-    explicit VisualizationWindow(QWidget *parent = nullptr);
+    explicit VisualizationWindow(const rclcpp::NodeOptions & options = rclcpp::NodeOptions(), QWidget *parent = nullptr);
     ~VisualizationWindow() override;
 
 private slots:
@@ -90,5 +93,10 @@ private:
     QVBoxLayout *main_layout_;
     QHBoxLayout *zoom_layout_;
 };
+
+// Register the component
+RCLCPP_COMPONENTS_REGISTER_NODE(qt_visualization::VisualizationWindow)
+
+}  // namespace qt_visualization
 
 #endif  // QT_VISUALIZATION__VISUALIZATION_WINDOW_HPP_
