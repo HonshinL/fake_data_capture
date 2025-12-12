@@ -27,7 +27,7 @@ ament_target_dependencies(fake_sensor_node_lib rclcpp std_msgs fake_capture_msgs
 
 # 创建可执行文件
 add_executable(fake_sensor_node 
-  src/fake_sensor_main.cpp
+  src/main.cpp
 )
 
 # 链接库到可执行文件

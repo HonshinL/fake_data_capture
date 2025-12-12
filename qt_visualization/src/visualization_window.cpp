@@ -157,11 +157,16 @@ void VisualizationWindow::init_ui()
 
 void VisualizationWindow::init_ros2()
 {
+    // 创建实时性QoS配置
+    rclcpp::QoS qos_profile(rclcpp::KeepLast(1));  // 只保留最新1条消息
+    qos_profile.best_effort();  // 使用尽力而为传输
+    qos_profile.deadline(std::chrono::milliseconds(100));  // 设置截止时间
+    qos_profile.lifespan(std::chrono::milliseconds(200));  // 设置消息生命周期
+
     // Create subscription to processed sensor data topic instead of raw data
-    // 在init_ros2()函数中，将订阅者队列大小从10改为1
     sensor_subscription_ = this->create_subscription<fake_capture_msgs::msg::CapturedData>(
     "processed_sensor_data",
-    1,  // 这里仍然是10，建议改为1
+    qos_profile,
     std::bind(&VisualizationWindow::sensor_data_callback, this, std::placeholders::_1));
 
     RCLCPP_INFO(this->get_logger(), "Visualization window initialized");
