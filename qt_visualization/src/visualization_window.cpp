@@ -25,17 +25,22 @@ VisualizationWindow::VisualizationWindow(const rclcpp::NodeOptions & options, QW
 
 VisualizationWindow::~VisualizationWindow()
 {
-    RCLCPP_INFO(this->get_logger(), "VisualizationWindow destructor called");
+    // 仅在ROS2仍运行时使用日志
+    if (rclcpp::ok()) {
+        RCLCPP_INFO(this->get_logger(), "VisualizationWindow destructor called");
+    }
     
-    // Stop and delete update timer
+    // 停止并删除更新定时器
     if (update_timer_) {
         update_timer_->stop();
         delete update_timer_;
         update_timer_ = nullptr;
     }
     
-    // The ROS2 subscription will be automatically destroyed when the node is deleted
-    RCLCPP_INFO(this->get_logger(), "VisualizationWindow destructor completed");
+    // 仅在ROS2仍运行时使用日志
+    if (rclcpp::ok()) {
+        RCLCPP_INFO(this->get_logger(), "VisualizationWindow destructor completed");
+    }
 }
 
 // Override closeEvent to handle window close gracefully
