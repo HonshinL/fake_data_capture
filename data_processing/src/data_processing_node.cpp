@@ -1,24 +1,23 @@
 #include "data_processing/data_processing_node.hpp"
+#include "rclcpp/rclcpp.hpp"
+#include "fake_capture_msgs/msg/captured_data.hpp"
 #include <chrono>
-
-using namespace std::chrono_literals;
+#include <iostream>
 
 DataProcessingNode::DataProcessingNode(const rclcpp::NodeOptions & options)
-    : Node("data_processing_node", options),
+    : QObject(), Node("data_processing_node", options),
       data_fifo_(100),  // 减小FIFO容量以减少延迟
       stop_thread_(false)
 {
     // Declare parameters
-    declare_parameter<double>("processing_frequency", 20.0);  // Default 20Hz
+    this->declare_parameter("processing_frequency", 20.0);
+    this->declare_parameter("alpha", 0.1);  // Low-pass filter parameter
 
-    // Get parameters
-    double processing_frequency = get_parameter("processing_frequency").as_double();
-
-    // 创建实时性QoS配置
-    rclcpp::QoS qos_profile(rclcpp::KeepLast(1));  // 只保留最新1条消息
-    qos_profile.best_effort();  // 使用尽力而为传输
-    qos_profile.deadline(std::chrono::milliseconds(100));  // 设置截止时间
-    qos_profile.lifespan(std::chrono::milliseconds(200));  // 设置消息生命周期
+    // Create QoS profile for best effort communication with consistent parameters
+    auto qos_profile = rclcpp::QoS(rclcpp::KeepLast(1))
+        .best_effort()
+        .deadline(std::chrono::milliseconds(100))
+        .lifespan(std::chrono::milliseconds(200));
 
     // Create subscription to sensor data
     sensor_subscription_ = this->create_subscription<fake_capture_msgs::msg::CapturedData>(
@@ -35,80 +34,62 @@ DataProcessingNode::DataProcessingNode(const rclcpp::NodeOptions & options)
     processing_thread_ = std::thread(&DataProcessingNode::process_data_thread, this);
 
     RCLCPP_INFO(this->get_logger(), "Data Processing Node started");
-    RCLCPP_INFO(this->get_logger(), "Processing frequency: %.2f Hz", processing_frequency);
-}
-
-void DataProcessingNode::process_data_thread()
-{
-    double process_interval = 1.0 / get_parameter("processing_frequency").as_double();
-    auto total_interval = std::chrono::duration<double>(process_interval);
-    auto short_sleep = std::chrono::milliseconds(1); // Short sleep interval
-
-    while (rclcpp::ok() && !stop_thread_) {
-        auto start_time = std::chrono::steady_clock::now();
-        
-        // 处理队列中的所有可用数据点
-        DataWithTimestamp data_with_ts;
-        while (data_fifo_.pop(data_with_ts)) {
-            // Process the data
-            double processed_data = process_data(data_with_ts.data);
-            
-            // Emit Qt signal with processed data and original timestamp
-            emit dataReady(processed_data, data_with_ts.timestamp);
-            
-            // Publish processed data to ROS2 topic
-            auto message = fake_capture_msgs::msg::CapturedData();
-            message.data = processed_data;
-            message.stamp = data_with_ts.timestamp; // 保留原始时间戳
-            processed_data_publisher_->publish(message);
-        }
-
-        // Use multiple short sleeps to maintain processing frequency
-        // while allowing for responsive termination
-        auto elapsed = std::chrono::duration<double>::zero();
-        
-        while (elapsed < total_interval && rclcpp::ok() && !stop_thread_) {
-            std::this_thread::sleep_for(short_sleep);
-            elapsed = std::chrono::steady_clock::now() - start_time;
-        }
-    }
-}
-
-// Simple data processing function implementation
-double DataProcessingNode::process_data(double raw_data)
-{
-    // Example: Simple low-pass filter
-    static double filtered_value = 0.0;
-    double alpha = 0.1;  // Filter coefficient (0-1)
-    filtered_value = alpha * raw_data + (1 - alpha) * filtered_value;
-    return filtered_value;
+    RCLCPP_INFO(this->get_logger(), "Using event-driven processing mode");
 }
 
 DataProcessingNode::~DataProcessingNode()
 {
-    RCLCPP_INFO(this->get_logger(), "Data Processing Node is shutting down");
-    
-    // Set stop flag
+    // Set stop flag and wait for thread to finish
     stop_thread_ = true;
-    
-    // Wait for processing thread to finish
     if (processing_thread_.joinable()) {
         processing_thread_.join();
-        RCLCPP_INFO(this->get_logger(), "Processing thread joined");
     }
-    
-    RCLCPP_INFO(this->get_logger(), "Data Processing Node shutdown complete");
+    RCLCPP_INFO(this->get_logger(), "Data Processing Node stopped");
 }
 
 void DataProcessingNode::sensor_data_callback(const fake_capture_msgs::msg::CapturedData::SharedPtr msg)
 {
-    // 创建包含数据和时间戳的结构体
+    // 将接收到的数据和时间戳存入FIFO
     DataWithTimestamp data_with_ts;
     data_with_ts.data = msg->data;
     data_with_ts.timestamp = msg->stamp;
     
-    // Push received data to FIFO
-    if (!data_fifo_.push(data_with_ts)) {
-        RCLCPP_WARN(this->get_logger(), "FIFO is full, overwriting oldest data");
+    bool pushed = data_fifo_.push(data_with_ts);
+    if (!pushed) {
+        RCLCPP_WARN(this->get_logger(), "FIFO is full, oldest data overwritten");
     }
+}
+
+void DataProcessingNode::process_data_thread()
+{
+    DataWithTimestamp data_with_ts;
+    
+    while (rclcpp::ok() && !stop_thread_) {
+        // 使用阻塞方式等待新数据，超时时间为100ms
+        if (data_fifo_.pop_blocking(data_with_ts)) {
+            // 处理数据
+            double processed_data = process_data(data_with_ts.data);
+            
+            // 发布处理后的数据
+            auto message = fake_capture_msgs::msg::CapturedData();
+            message.data = processed_data;
+            message.stamp = data_with_ts.timestamp; // 保留原始时间戳
+            processed_data_publisher_->publish(message);
+            
+            // 发送Qt信号
+            emit dataReady(processed_data, data_with_ts.timestamp);
+        }
+    }
+}
+
+double DataProcessingNode::process_data(double raw_data)
+{
+    // 获取滤波参数
+    double alpha = this->get_parameter("alpha").as_double();
+    
+    // 简单低通滤波
+    static double filtered_data = raw_data;  // 静态变量保存上次滤波结果
+    filtered_data = alpha * raw_data + (1.0 - alpha) * filtered_data;
+    
+    return filtered_data;
 }
