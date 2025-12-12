@@ -1,0 +1,13 @@
+# 定义Goal部分 - 客户端发送给服务器的请求
+bool start_request
+int32 target_value
+---
+# 定义Result部分 - 服务器完成后返回的结果
+bool success
+int32 final_value
+string message
+---
+# 定义Feedback部分 - 服务器在执行过程中定期发送的反馈
+int32 current_value
+float32 progress
+string status_message
