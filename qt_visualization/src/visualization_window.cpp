@@ -12,7 +12,7 @@ VisualizationWindow::VisualizationWindow(QWidget *parent)
       rclcpp::Node("visualization_window"),
       x_counter_(0.0),
       max_storage_points_(10000),  // 最大存储10000个点
-      max_data_points_(500)  // 默认显示500个点
+      max_data_points_(200)  // 默认显示500个点
 {
     init_ui();
     init_ros2();
@@ -57,7 +57,7 @@ void VisualizationWindow::init_ui()
 {
     // Set window properties
     setWindowTitle("Sensor Data Visualization");
-    resize(1000, 600);
+    resize(1800, 1000);  // 增加窗口初始大小
 
     // Create central widget and main layout
     central_widget_ = new QWidget(this);
@@ -80,11 +80,13 @@ void VisualizationWindow::init_ui()
     x_axis_->setRange(0, max_data_points_);  // Start from time 0
     x_axis_->setTickCount(11);
     x_axis_->setLabelFormat("%.1f");  // Show one decimal place for time
+    x_axis_->setLabelsFont(QFont("Arial", 8));  // 设置X轴数字显示大小
 
     y_axis_ = new QValueAxis();
     y_axis_->setTitleText("Value");
     y_axis_->setRange(0, 10);  // Initial range, will auto-adjust
     y_axis_->setTickCount(11);
+    y_axis_->setLabelsFont(QFont("Arial", 8));  // 设置Y轴数字显示大小
 
     // Add axes to chart
     chart_->addAxis(x_axis_, Qt::AlignBottom);
