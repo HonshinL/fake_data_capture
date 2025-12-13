@@ -214,9 +214,10 @@ void VisualizationWindow::onEventBusDataReceived(const QVariantMap& event_data)
         double data = event_data["data"].toDouble();
         double timestamp_us = event_data["timestamp_us"].toDouble();
         
-        // 获取当前时间的微秒级精度
-        QDateTime current_time = QDateTime::currentDateTimeUtc();
-        double current_us = current_time.toMSecsSinceEpoch() * 1000.0;
+        // 获取当前时间的微秒级精度 - 使用std::chrono替代QDateTime
+        auto now = std::chrono::high_resolution_clock::now();
+        auto now_us = std::chrono::time_point_cast<std::chrono::microseconds>(now);
+        long long current_us = now_us.time_since_epoch().count();
         double latency_ms = (current_us - timestamp_us) / 1000.0;
         
         std::cout << "EventBus延迟: " << latency_ms << " 毫秒" << std::endl;
@@ -230,10 +231,10 @@ void VisualizationWindow::onRosDataReceived(double value, double timestamp_us)
 {
     // 只在选择ROS通信方式时处理数据
     if (communication_mode_ == "ros") {
-        // 获取当前时间的微秒级精度
-        QDateTime current_time = QDateTime::currentDateTimeUtc();
-        double current_us = current_time.toMSecsSinceEpoch() * 1000.0;
-        
+        // 获取当前时间的微秒级精度 - 使用std::chrono替代QDateTime
+        auto now = std::chrono::high_resolution_clock::now();
+        auto now_us = std::chrono::time_point_cast<std::chrono::microseconds>(now);
+        long long current_us = now_us.time_since_epoch().count();
         // 计算延迟（毫秒）
         double latency_ms = (current_us - timestamp_us) / 1000.0;
         

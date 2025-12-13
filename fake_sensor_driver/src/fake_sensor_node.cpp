@@ -53,17 +53,23 @@ void FakeSensorNode::timer_callback()
 {
   auto message = fake_capture_msgs::msg::CapturedData();
   
+  // 使用std::chrono获取当前时间
+  auto now = std::chrono::high_resolution_clock::now();
+  auto now_ns = std::chrono::time_point_cast<std::chrono::nanoseconds>(now).time_since_epoch().count();
+  
   if (mode_ == "random") {
     // 生成随机数
     message.data = offset_ + distribution_(generator_) * amplitude_ + distribution_(generator_) * noise_;
   } else if (mode_ == "sine") {
-    // 生成正弦波
-    double time = this->now().seconds();
+    // 生成正弦波 - 使用std::chrono替代ROS时间
+    auto now_us = std::chrono::time_point_cast<std::chrono::microseconds>(now).time_since_epoch().count();
+    double time = now_us / 1e6;  // 转换为秒
     message.data = offset_ + amplitude_ * sin(2 * M_PI * 2 * time) + distribution_(generator_) * noise_;
   }
 
-  // 添加时间戳（采集时间）
-  message.stamp = this->now();
+  // 添加时间戳（采集时间） - 使用std::chrono生成并转换为ROS 2的Time类型
+  message.stamp.sec = now_ns / 1'000'000'000;
+  message.stamp.nanosec = now_ns % 1'000'000'000;
 
   sensor_publisher_->publish(message);
   RCLCPP_DEBUG(this->get_logger(), "Published data: %.4f at time: %.6f", message.data, message.stamp.sec + message.stamp.nanosec / 1e9);
