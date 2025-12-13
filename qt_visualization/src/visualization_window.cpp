@@ -16,10 +16,8 @@ VisualizationWindow::VisualizationWindow(QWidget *parent)
       max_storage_points_(10000),
       max_data_points_(200),
       communication_mode_("ros"),
-      ros_total_latency_(0.0),
-      eventbus_total_latency_(0.0),
-      ros_latency_point_count_(0),
-      eventbus_latency_point_count_(0),
+      total_latency_(0.0),
+      latency_point_count_(0),
       eventbus_subscription_id_(0)
 {
     init_ui();
@@ -94,22 +92,27 @@ void VisualizationWindow::init_ui()
     
     // Create latency chart
     latency_chart_ = new QChart();
-    ros_latency_series_ = new QLineSeries();
-    eventbus_latency_series_ = new QLineSeries();
-    ros_average_latency_series_ = new QLineSeries();
-    eventbus_average_latency_series_ = new QLineSeries();
+    latency_series_ = new QLineSeries();
+    average_latency_series_ = new QLineSeries();
     
-    // Set series colors and names
-    ros_latency_series_->setName("ROS Latency");
-    ros_latency_series_->setColor(Qt::red);
-    eventbus_latency_series_->setName("EventBus Latency");
-    eventbus_latency_series_->setColor(Qt::blue);
-    ros_average_latency_series_->setName("ROS Average Latency");
-    ros_average_latency_series_->setColor(Qt::darkRed);
-    ros_average_latency_series_->setPen(QPen(Qt::darkRed, 2, Qt::DotLine));
-    eventbus_average_latency_series_->setName("EventBus Average Latency");
-    eventbus_average_latency_series_->setColor(Qt::darkBlue);
-    eventbus_average_latency_series_->setPen(QPen(Qt::darkBlue, 2, Qt::DotLine));
+    // Set series colors and names based on communication mode
+    if (communication_mode_ == "ros") {
+        latency_series_->setName("ROS Latency");
+        latency_series_->setColor(Qt::red);
+        average_latency_series_->setName("ROS Average Latency");
+        average_latency_series_->setColor(Qt::darkRed);
+        average_latency_series_->setPen(QPen(Qt::darkRed, 2, Qt::DotLine));
+    } else {
+        latency_series_->setName("EventBus Latency");
+        latency_series_->setColor(Qt::blue);
+        average_latency_series_->setName("EventBus Average Latency");
+        average_latency_series_->setColor(Qt::darkBlue);
+        average_latency_series_->setPen(QPen(Qt::darkBlue, 2, Qt::DotLine));
+    }
+    
+    // 修复：先将系列添加到图表中（必须在附加轴之前）
+    latency_chart_->addSeries(latency_series_);
+    latency_chart_->addSeries(average_latency_series_);
     
     // Configure axes for latency chart
     latency_x_axis_ = new QValueAxis();
@@ -118,23 +121,13 @@ void VisualizationWindow::init_ui()
     latency_chart_->addAxis(latency_y_axis_, Qt::AlignLeft);
     
     // 启用延迟图表图例
-    latency_chart_->legend()->show();  // 添加这行代码
+    latency_chart_->legend()->show();
     
-    // Attach series to axes
-    ros_latency_series_->attachAxis(latency_x_axis_);
-    ros_latency_series_->attachAxis(latency_y_axis_);
-    eventbus_latency_series_->attachAxis(latency_x_axis_);
-    eventbus_latency_series_->attachAxis(latency_y_axis_);
-    ros_average_latency_series_->attachAxis(latency_x_axis_);
-    ros_average_latency_series_->attachAxis(latency_y_axis_);
-    eventbus_average_latency_series_->attachAxis(latency_x_axis_);
-    eventbus_average_latency_series_->attachAxis(latency_y_axis_);
-    
-    // 添加这部分代码，将延迟系列添加到延迟图表中
-    latency_chart_->addSeries(ros_latency_series_);
-    latency_chart_->addSeries(eventbus_latency_series_);
-    latency_chart_->addSeries(ros_average_latency_series_);
-    latency_chart_->addSeries(eventbus_average_latency_series_);
+    // Attach series to axes（现在系列已经在图表中，可以附加轴了）
+    latency_series_->attachAxis(latency_x_axis_);
+    latency_series_->attachAxis(latency_y_axis_);
+    average_latency_series_->attachAxis(latency_x_axis_);
+    average_latency_series_->attachAxis(latency_y_axis_);
     
     // Create latency chart view
     latency_chart_view_ = new QChartView(latency_chart_);
@@ -179,7 +172,7 @@ void VisualizationWindow::init_ui()
     update_timer_ = new QTimer(this);
     
     // Connect signals and slots
-    connect(update_timer_, &QTimer::timeout, this, &VisualizationWindow::timerUpdate);
+    connect(update_timer_, &QTimer::timeout, this, &VisualizationWindow::updateCharts);
     connect(zoom_slider_, &QSlider::valueChanged, this, &VisualizationWindow::zoomChanged);
     connect(communication_mode_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), 
             this, &VisualizationWindow::onCommunicationModeChanged);
@@ -194,17 +187,13 @@ void VisualizationWindow::init_ui()
     
     // 初始化时根据默认通信模式设置系列可见性
     if (communication_mode_ == "ros") {
-        ros_latency_series_->setVisible(true);
-        ros_average_latency_series_->setVisible(true);
-        eventbus_latency_series_->setVisible(false);
-        eventbus_average_latency_series_->setVisible(false);
+        latency_series_->setVisible(true);
+        average_latency_series_->setVisible(true);
         ros_average_latency_label_->show();
         eventbus_average_latency_label_->hide();
     } else {
-        ros_latency_series_->setVisible(false);
-        ros_average_latency_series_->setVisible(false);
-        eventbus_latency_series_->setVisible(true);
-        eventbus_average_latency_series_->setVisible(true);
+        latency_series_->setVisible(true);
+        average_latency_series_->setVisible(true);
         ros_average_latency_label_->hide();
         eventbus_average_latency_label_->show();
     }
@@ -231,223 +220,196 @@ void VisualizationWindow::onEventBusDataReceived(const QVariantMap& event_data)
         double latency_ms = (current_us - timestamp_us) / 1000.0;
         
         std::cout << "EventBus延迟: " << latency_ms << " 毫秒" << std::endl;
-        updateChart(data, latency_ms, false);
+        updateDataPoints(data, latency_ms, false);
     }
 }
 
 // 在init_event_bus函数之后添加
-void VisualizationWindow::onRosDataReceived(double value, double latency)
+// 修改onRosDataReceived方法，在其中计算延迟
+void VisualizationWindow::onRosDataReceived(double value, double timestamp_us)
 {
     // 只在选择ROS通信方式时处理数据
     if (communication_mode_ == "ros") {
-        // 输出ROS延迟到终端
-        std::cout << "ROS延迟: " << latency << " 毫秒" << std::endl;
+        // 获取当前时间的微秒级精度
+        QDateTime current_time = QDateTime::currentDateTimeUtc();
+        double current_us = current_time.toMSecsSinceEpoch() * 1000.0;
         
-        // 更新图表
-        updateChart(value, latency, true);  // true表示是ROS数据
+        // 计算延迟（毫秒）
+        double latency_ms = (current_us - timestamp_us) / 1000.0;
+        
+        // 输出ROS延迟到终端
+        std::cout << "ROS延迟: " << latency_ms << " 毫秒" << std::endl;
+        
+        // 更新数据点
+        updateDataPoints(value, latency_ms, true);  // true表示是ROS数据
     }
 }
 
 // 修改updateChart方法，优化延迟数据点的处理逻辑
-void VisualizationWindow::updateChart(double value, double latency, bool is_ros)
-{
-    // 添加主数据点
-    all_data_points_.append(QPointF(x_counter_, value));
+void VisualizationWindow::updateDataPoints(double value, double latency, bool is_ros) 
+{ 
+    // 标记is_ros参数为故意未使用，避免编译警告 
+    (void)is_ros; 
+     
+    // 添加主数据点 
+    data_points_.append(QPointF(x_counter_, value)); 
+     
+    // 添加延迟数据点 
+    latency_points_.append(QPointF(x_counter_, latency));
     
-    // 添加延迟数据点
-    if (is_ros) {
-        all_ros_latency_points_.append(QPointF(x_counter_, latency));
-        ros_total_latency_ += latency;
-        ros_latency_point_count_++;
+    // // 添加调试信息：当数据点数量大于10时打印并退出
+    // if (data_points_.size() > 10) {
+    //     std::cout << "调试信息：" << std::endl;
+    //     std::cout << "主数据点数量：" << data_points_.size() << std::endl;
+    //     std::cout << "延迟数据点数量：" << latency_points_.size() << std::endl;
+    //     std::cout << "最后10个主数据点：" << std::endl;
         
-        // 确保ROS延迟数据点数量不超过最大存储量
-        if (static_cast<size_t>(all_ros_latency_points_.size()) > max_storage_points_) {
-            ros_total_latency_ -= all_ros_latency_points_.first().y();
-            all_ros_latency_points_.removeFirst();
-            ros_latency_point_count_--;
-        }
-    } else {
-        all_eventbus_latency_points_.append(QPointF(x_counter_, latency));
-        eventbus_total_latency_ += latency;
-        eventbus_latency_point_count_++;
+    //     // 打印最后10个主数据点
+    //     int start = std::max(0, static_cast<int>(data_points_.size()) - 10);
+    //     for (int i = start; i < data_points_.size(); ++i) {
+    //         std::cout << "  索引" << i << ": x=" << data_points_[i].x() << ", y=" << data_points_[i].y() << std::endl;
+    //     }
         
-        // 确保EventBus延迟数据点数量不超过最大存储量
-        if (static_cast<size_t>(all_eventbus_latency_points_.size()) > max_storage_points_) {
-            eventbus_total_latency_ -= all_eventbus_latency_points_.first().y();
-            all_eventbus_latency_points_.removeFirst();
-            eventbus_latency_point_count_--;
-        }
+    //     std::cout << "最后10个延迟数据点：" << std::endl;
+    //     // 打印最后10个延迟数据点
+    //     start = std::max(0, static_cast<int>(latency_points_.size()) - 10);
+    //     for (int i = start; i < latency_points_.size(); ++i) {
+    //         std::cout << "  索引" << i << ": x=" << latency_points_[i].x() << ", y=" << latency_points_[i].y() << std::endl;
+    //     }
+        
+    //     // 退出程序
+    //     std::cout << "数据点数量超过10，程序退出。" << std::endl;
+    //     QApplication::quit();
+    // }
+    
+    // 修复：删除了额外的大括号，确保以下代码在函数体内
+    total_latency_ += latency;
+    latency_point_count_++;
+    
+    // 确保主数据点数量不超过最大存储量
+    if (static_cast<size_t>(data_points_.size()) > max_storage_points_) {
+        data_points_.removeFirst();
+    }
+    
+    // 确保延迟数据点数量不超过最大存储量
+    if (static_cast<size_t>(latency_points_.size()) > max_storage_points_) {
+        total_latency_ -= latency_points_.first().y();
+        latency_points_.removeFirst();
+        latency_point_count_--;
     }
     
     x_counter_ += 1.0;
-
-    // 确保主数据点数量不超过最大存储量
-    if (static_cast<size_t>(all_data_points_.size()) > max_storage_points_) {
-        all_data_points_.removeFirst();
-    }
 }
 
-// 修改timerUpdate方法，优化延迟数据点的显示逻辑
-void VisualizationWindow::timerUpdate()
+// 修改updateCharts方法，优化延迟数据点的显示逻辑
+// 添加一个通用的图表更新辅助方法
+void VisualizationWindow::updateChartSeries(QLineSeries* series, QValueAxis* y_axis, 
+                                           const QVector<QPointF>& data_points, 
+                                           double padding_factor, double min_padding)
 {
-    // 根据当前通信模式计算平均延迟
-    double ros_average_latency = 0.0;
-    double eventbus_average_latency = 0.0;
+    // 更新曲线数据
+    series->replace(data_points);
     
-    if (communication_mode_ == "ros") {
-        ros_average_latency = (ros_latency_point_count_ > 0) ? (ros_total_latency_ / ros_latency_point_count_) : 0.0;
-        ros_average_latency_label_->setText(QString("ROS Average Latency: %1 ms").arg(ros_average_latency, 0, 'f', 2));
-    } else {
-        eventbus_average_latency = (eventbus_latency_point_count_ > 0) ? (eventbus_total_latency_ / eventbus_latency_point_count_) : 0.0;
-        eventbus_average_latency_label_->setText(QString("EventBus Average Latency: %1 ms").arg(eventbus_average_latency, 0, 'f', 2));
-    }
-    
-    // 确定要显示的数据点范围
-    QVector<QPointF> display_data_points;
-    QVector<QPointF> display_ros_latency_points;
-    QVector<QPointF> display_eventbus_latency_points;
-    QVector<QPointF> display_ros_average_points;
-    QVector<QPointF> display_eventbus_average_points;
-    
-    int total_data_points = all_data_points_.size();
-    int start_index = std::max(0, total_data_points - static_cast<int>(max_data_points_));
-    
-    // 只显示所有主数据点（无论通信模式）
-    for (int i = start_index; i < total_data_points; ++i) {
-        display_data_points.append(all_data_points_[i]);
-    }
-    
-    // 分别处理延迟数据点，确保与主数据点完全同步
-    if (communication_mode_ == "ros") {
-        // 使用与主数据点相同的索引范围
-        int ros_start_index = start_index;
-        int ros_end_index = total_data_points;
+    // 自动调整Y轴范围
+    if (data_points.size() > 0) {
+        double y_min = data_points.first().y();
+        double y_max = data_points.first().y();
         
-        // 确保索引在有效范围内
-        if (ros_start_index < 0) ros_start_index = 0;
-        if (ros_end_index > static_cast<int>(all_ros_latency_points_.size())) {
-            ros_end_index = static_cast<int>(all_ros_latency_points_.size());
-        }
-        
-        // 如果延迟数据点数量少于主数据点，调整起始索引
-        if (ros_end_index - ros_start_index < static_cast<int>(max_data_points_)) {
-            ros_start_index = std::max(0, ros_end_index - static_cast<int>(max_data_points_));
-        }
-        
-        // 确保起始索引不大于结束索引
-        if (ros_start_index >= ros_end_index) {
-            ros_start_index = 0;
-        }
-        
-        for (int i = ros_start_index; i < ros_end_index; ++i) {
-            display_ros_latency_points.append(all_ros_latency_points_[i]);
-            display_ros_average_points.append(QPointF(all_ros_latency_points_[i].x(), ros_average_latency));
-        }
-    } else if (communication_mode_ == "eventbus") {
-        // 使用与主数据点相同的索引范围
-        int eventbus_start_index = start_index;
-        int eventbus_end_index = total_data_points;
-        
-        // 确保索引在有效范围内
-        if (eventbus_start_index < 0) eventbus_start_index = 0;
-        if (eventbus_end_index > static_cast<int>(all_eventbus_latency_points_.size())) {
-            eventbus_end_index = static_cast<int>(all_eventbus_latency_points_.size());
-        }
-        
-        // 如果延迟数据点数量少于主数据点，调整起始索引
-        if (eventbus_end_index - eventbus_start_index < static_cast<int>(max_data_points_)) {
-            eventbus_start_index = std::max(0, eventbus_end_index - static_cast<int>(max_data_points_));
-        }
-        
-        // 确保起始索引不大于结束索引
-        if (eventbus_start_index >= eventbus_end_index) {
-            eventbus_start_index = 0;
-        }
-        
-        for (int i = eventbus_start_index; i < eventbus_end_index; ++i) {
-            display_eventbus_latency_points.append(all_eventbus_latency_points_[i]);
-            display_eventbus_average_points.append(QPointF(all_eventbus_latency_points_[i].x(), eventbus_average_latency));
-        }
-    }
-    
-    // 更新主数据曲线
-    series_->replace(display_data_points);
-    
-    // 根据当前通信模式更新对应的延迟曲线
-    if (communication_mode_ == "ros") {
-        ros_latency_series_->replace(display_ros_latency_points);
-        ros_average_latency_series_->replace(display_ros_average_points);
-    } else {
-        eventbus_latency_series_->replace(display_eventbus_latency_points);
-        eventbus_average_latency_series_->replace(display_eventbus_average_points);
-    }
-    
-    // 自动调整主数据图表的坐标轴
-    if (display_data_points.size() > 0) {
-        double y_min = display_data_points.first().y();
-        double y_max = display_data_points.first().y();
-        
-        for (const auto &point : display_data_points) {
+        for (const auto &point : data_points) {
             y_min = std::min(y_min, point.y());
             y_max = std::max(y_max, point.y());
         }
         
-        double y_padding = (y_max - y_min) * 0.1;
-        if (y_padding == 0) {
-            y_padding = 0.5;
+        double y_padding = (y_max - y_min) * padding_factor;
+        if (y_padding < min_padding) {
+            y_padding = min_padding;
         }
         
-        y_axis_->setRange(y_min - y_padding, y_max + y_padding);
-        
-        // 调整X轴范围，确保主图表和延迟图表完全同步
+        y_axis->setRange(y_min - y_padding, y_max + y_padding);
+    } else {
+        // 没有数据时，设置一个默认的合理范围
+        y_axis->setRange(-1.0, 1.0);
+    }
+}
+
+// 更新updateCharts方法，使用统一的更新逻辑
+void VisualizationWindow::updateCharts()
+{
+    // 根据当前通信模式计算平均延迟
+    double average_latency = (latency_point_count_ > 0) ? (total_latency_ / latency_point_count_) : 0.0;
+    
+    if (communication_mode_ == "ros") {
+        ros_average_latency_label_->setText(QString("ROS Average Latency: %1 ms").arg(average_latency, 0, 'f', 2));
+    } else {
+        eventbus_average_latency_label_->setText(QString("EventBus Average Latency: %1 ms").arg(average_latency, 0, 'f', 2));
+    }
+    
+    // 确定要显示的数据点范围
+    QVector<QPointF> display_data_points;
+    QVector<QPointF> display_latency_points;
+    QVector<QPointF> display_average_points;
+    
+    int total_data_points = data_points_.size();
+    int start_index = std::max(0, total_data_points - static_cast<int>(max_data_points_));
+    
+    // 只显示所有主数据点（无论通信模式）
+    for (int i = start_index; i < total_data_points; ++i) {
+        display_data_points.append(data_points_[i]);
+    }
+    
+    // 延迟图表使用与主数据图表完全相同的索引范围
+    int total_latency_points = latency_points_.size();
+    
+    // 修改后
+    int latency_start_index = std::max(0, total_latency_points - static_cast<int>(max_data_points_));
+    int latency_end_index = total_latency_points;
+    
+    // 确保索引在有效范围内
+    if (latency_start_index < 0) latency_start_index = 0;
+    if (latency_end_index > total_latency_points) {
+        latency_end_index = total_latency_points;
+    }
+    
+    // 只显示所有延迟数据点（使用与主数据图表相同的索引范围）
+    for (int i = latency_start_index; i < latency_end_index; ++i) {
+        display_latency_points.append(latency_points_[i]);
+        display_average_points.append(QPointF(latency_points_[i].x(), average_latency));
+    }
+    
+    // 调整X轴范围，确保主图表和延迟图表完全同步
+    if (display_data_points.size() > 0) {
         double x_end = x_counter_;
         double x_start = std::max(0.0, x_end - max_data_points_);
         x_axis_->setRange(x_start, x_end);
         latency_x_axis_->setRange(x_start, x_end);
     }
     
-    // 自动调整延迟图表的Y轴，只考虑当前通信模式的数据
-    double latency_min = 0.0;
-    double latency_max = 0.0;
-    bool has_data = false;
+    // 使用统一的方法更新主数据图表
+    updateChartSeries(series_, y_axis_, display_data_points, 0.1, 0.5);
     
-    if (communication_mode_ == "ros" && !display_ros_latency_points.empty()) {
-        latency_min = display_ros_latency_points.first().y();
-        latency_max = display_ros_latency_points.first().y();
-        has_data = true;
-        
-        for (const auto &point : display_ros_latency_points) {
-            latency_min = std::min(latency_min, point.y());
-            latency_max = std::max(latency_max, point.y());
-        }
-        latency_min = std::min(latency_min, ros_average_latency);
-        latency_max = std::max(latency_max, ros_average_latency);
-    } else if (communication_mode_ == "eventbus" && !display_eventbus_latency_points.empty()) {
-        latency_min = display_eventbus_latency_points.first().y();
-        latency_max = display_eventbus_latency_points.first().y();
-        has_data = true;
-        
-        for (const auto &point : display_eventbus_latency_points) {
-            latency_min = std::min(latency_min, point.y());
-            latency_max = std::max(latency_max, point.y());
-        }
-        latency_min = std::min(latency_min, eventbus_average_latency);
-        latency_max = std::max(latency_max, eventbus_average_latency);
-    }
+    // 使用统一的方法更新延迟图表
+    updateChartSeries(latency_series_, latency_y_axis_, display_latency_points, 0.1, 1.0);
     
-    double latency_padding = 1.0; // 默认padding
-    if (has_data) {
-        latency_padding = (latency_max - latency_min) * 0.1;
+    // 更新平均延迟曲线
+    // 移除重复的latency_series_->replace(display_latency_points);调用
+    average_latency_series_->replace(display_average_points);
+    
+    // 如果有延迟数据，调整Y轴范围时需要考虑平均延迟线
+    if (display_latency_points.size() > 0) {
+        double latency_min = latency_y_axis_->min();
+        double latency_max = latency_y_axis_->max();
+        
+        // 确保平均延迟线也在可见范围内
+        latency_min = std::min(latency_min, average_latency);
+        latency_max = std::max(latency_max, average_latency);
+        
+        double latency_padding = (latency_max - latency_min) * 0.1;
         if (latency_padding < 1.0) { // 确保至少有1.0的padding
             latency_padding = 1.0;
         }
-    } else {
-        // 没有数据时，设置一个默认的合理范围
-        latency_min = -1.0;
-        latency_max = 1.0;
+        
+        latency_y_axis_->setRange(latency_min - latency_padding, latency_max + latency_padding);
     }
-    
-    latency_y_axis_->setRange(latency_min - latency_padding, latency_max + latency_padding);
 }
 
 void VisualizationWindow::zoomChanged(int value)
@@ -459,7 +421,7 @@ void VisualizationWindow::zoomChanged(int value)
     zoom_value_label_->setText(QString("%1 points").arg(value));
     
     // 重新更新图表
-    timerUpdate();
+    updateCharts();
 }
 
 void VisualizationWindow::onCommunicationModeChanged(int) {
@@ -470,49 +432,38 @@ void VisualizationWindow::onCommunicationModeChanged(int) {
     ros_average_latency_label_->hide();
     eventbus_average_latency_label_->hide();
     
-    // Set series visibility based on selected communication mode
+    // Update series name and color based on selected communication mode
     if (communication_mode_ == "ros") {
-        ros_latency_series_->setVisible(true);
-        ros_average_latency_series_->setVisible(true);
-        eventbus_latency_series_->setVisible(false);
-        eventbus_average_latency_series_->setVisible(false);
+        latency_series_->setName("ROS Latency");
+        latency_series_->setColor(Qt::red);
+        average_latency_series_->setName("ROS Average Latency");
+        average_latency_series_->setColor(Qt::darkRed);
+        average_latency_series_->setPen(QPen(Qt::darkRed, 2, Qt::DotLine));
         ros_average_latency_label_->show();
     } else {
-        ros_latency_series_->setVisible(false);
-        ros_average_latency_series_->setVisible(false);
-        eventbus_latency_series_->setVisible(true);
-        eventbus_average_latency_series_->setVisible(true);
+        latency_series_->setName("EventBus Latency");
+        latency_series_->setColor(Qt::blue);
+        average_latency_series_->setName("EventBus Average Latency");
+        average_latency_series_->setColor(Qt::darkBlue);
+        average_latency_series_->setPen(QPen(Qt::darkBlue, 2, Qt::DotLine));
         eventbus_average_latency_label_->show();
     }
     
     // Clear all data points to start fresh with new communication mode
-    all_data_points_.clear();
+    data_points_.clear();
     series_->clear();
-    all_ros_latency_points_.clear();
-    all_eventbus_latency_points_.clear();
-    ros_latency_series_->clear();
-    eventbus_latency_series_->clear();
-    ros_average_latency_series_->clear();
-    eventbus_average_latency_series_->clear();
+    latency_points_.clear();
+    latency_series_->clear();
+    average_latency_series_->clear();
     
     x_counter_ = 0.0;
-    ros_total_latency_ = 0.0;
-    eventbus_total_latency_ = 0.0;
-    ros_latency_point_count_ = 0;
-    eventbus_latency_point_count_ = 0;
+    total_latency_ = 0.0;
+    latency_point_count_ = 0;
     
     // Update chart immediately
-    timerUpdate();
+    updateCharts();
     
     // 使用标准C++输出替代ROS日志
     std::cout << "Switched communication mode to: " << communication_mode_ << std::endl;
 }
-
 }  // namespace qt_visualization
-
-// Remove this include
-// #include "rclcpp_components/register_node_macro.hpp"
-
-// Remove this line at the end of the file
-// 删除文件末尾的以下代码（如果存在）
-// RCLCPP_COMPONENTS_REGISTER_NODE(qt_visualization::VisualizationWindow)

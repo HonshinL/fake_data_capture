@@ -10,8 +10,8 @@
 #include <QSlider>
 #include <QLabel>
 #include <QHBoxLayout>
-#include <QComboBox>  // 添加QComboBox头文件
-#include <event_bus_cpp/event_bus.hpp>  // 添加EventBus头文件
+#include <QComboBox>
+#include <event_bus_cpp/event_bus.hpp>
 
 QT_CHARTS_USE_NAMESPACE
 
@@ -27,14 +27,14 @@ public:
 
 public Q_SLOTS:
     // Slot to receive data from ROS node
-    void onRosDataReceived(double value, double latency);
+    void onRosDataReceived(double value, double timestamp_us);
 
 private slots:
-    // Slot to update charts with new data
-    void updateChart(double value, double latency, bool is_ros);
+    // Slot to update data points with new data
+    void updateDataPoints(double value, double latency, bool is_ros);
     
     // Slot for timer to update UI
-    void timerUpdate();
+    void updateCharts();
     
     // Slot for zoom slider changes
     void zoomChanged(int value);
@@ -52,12 +52,16 @@ protected:
 private:
     // Helper methods
     void init_ui();
-    void init_event_bus();  // 添加EventBus初始化方法
+    void init_event_bus();
+    
+    // 通用的图表更新辅助方法
+    void updateChartSeries(QLineSeries* series, QValueAxis* y_axis, 
+                          const QVector<QPointF>& data_points, 
+                          double padding_factor, double min_padding);
     
     // Data storage and counters
-    QList<QPointF> all_data_points_;
-    QList<QPointF> all_ros_latency_points_;  // ROS延迟数据点
-    QList<QPointF> all_eventbus_latency_points_;  // EventBus延迟数据点
+    QList<QPointF> data_points_;
+    QList<QPointF> latency_points_;  // 合并后的延迟数据点
     double x_counter_;
     size_t max_storage_points_;
     size_t max_data_points_;
@@ -78,20 +82,16 @@ private:
     // UI components for latency chart
     QChartView *latency_chart_view_;
     QChart *latency_chart_;
-    QLineSeries *ros_latency_series_;  // ROS延迟曲线
-    QLineSeries *eventbus_latency_series_;  // EventBus延迟曲线
-    QLineSeries *ros_average_latency_series_;  // ROS平均延迟曲线
-    QLineSeries *eventbus_average_latency_series_;  // EventBus平均延迟曲线
+    QLineSeries *latency_series_;  // 合并后的延迟曲线
+    QLineSeries *average_latency_series_;  // 合并后的平均延迟曲线
     QValueAxis *latency_x_axis_;
     QValueAxis *latency_y_axis_;
     
     // UI components for average latency display
     QLabel *ros_average_latency_label_;  // ROS平均延迟标签
     QLabel *eventbus_average_latency_label_;  // EventBus平均延迟标签
-    double ros_total_latency_;  // ROS总延迟
-    double eventbus_total_latency_;  // EventBus总延迟
-    int ros_latency_point_count_;  // ROS延迟数据点数量
-    int eventbus_latency_point_count_;  // EventBus延迟数据点数量
+    double total_latency_;  // 合并后的总延迟
+    int latency_point_count_;  // 合并后的延迟数据点数量
     
     // UI components for communication mode selection
     QComboBox *communication_mode_combo_;  // 通信方式选择下拉框

@@ -17,8 +17,8 @@ public:
     ~SensorDataNode() override;
 
 Q_SIGNALS:
-    // Qt signal to emit sensor data with latency
-    void dataReceived(double value, double latency);
+    // Qt signal to emit sensor data with timestamp instead of latency
+    void dataReceived(double value, double timestamp_us);
 
 private:
     // ROS2 subscription callback
@@ -27,8 +27,6 @@ private:
     // ROS2 subscription for sensor data
     rclcpp::Subscription<fake_capture_msgs::msg::CapturedData>::SharedPtr sensor_subscription_;
 };
-
-// 移除组件注册宏，因为我们直接创建节点实例
 
 }  // namespace qt_visualization
 

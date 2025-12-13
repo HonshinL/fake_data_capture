@@ -35,15 +35,11 @@ SensorDataNode::~SensorDataNode()
 
 void SensorDataNode::sensor_data_callback(const fake_capture_msgs::msg::CapturedData::SharedPtr msg)
 {
-    // 计算数据采集和显示之间的时间差
-    rclcpp::Time current_time = this->now();
-    rclcpp::Duration time_diff = current_time - msg->stamp;
+    // 将ROS时间戳转换为微秒级精度
+    double timestamp_us = msg->stamp.sec * 1e6 + msg->stamp.nanosec / 1e3;
     
-    // 将时间差转换为毫秒
-    double latency_ms = time_diff.nanoseconds() / 1e6;
-    
-    // 发出Qt信号
-    Q_EMIT dataReceived(msg->data, latency_ms);
+    // 发出Qt信号，传递原始数据和时间戳
+    Q_EMIT dataReceived(msg->data, timestamp_us);
 }
 
 }  // namespace qt_visualization

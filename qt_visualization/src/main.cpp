@@ -41,11 +41,11 @@ int main(int argc, char **argv)
     auto data_processing_node = std::make_shared<data_processing::DataProcessingNode>();
     auto sensor_data_node = std::make_shared<qt_visualization::SensorDataNode>();
     
-    // Create visualization window
+    // 创建可视化窗口
     qt_visualization::VisualizationWindow window;
     window.show();
     
-    // Connect ROS node signal to window slot
+    // 连接ROS节点信号到窗口槽
     QObject::connect(sensor_data_node.get(), &qt_visualization::SensorDataNode::dataReceived,
                      &window, &qt_visualization::VisualizationWindow::onRosDataReceived);
     
