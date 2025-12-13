@@ -1,48 +1,45 @@
 #include "qt_visualization/visualization_window.hpp"
-#include <QApplication>  // 添加QApplication头文件
+#include <QApplication>
+#include <QDateTime>
 #include <chrono>
 #include <iostream>
 #include <QCloseEvent>
-#include <fake_capture_msgs/msg/captured_data.hpp>  // 使用带有时间戳的消息类型
-#include "rclcpp_components/register_node_macro.hpp"
+#include <event_bus_cpp/event_bus.hpp>
 
 using namespace std::chrono_literals;
 
 namespace qt_visualization {
 
-VisualizationWindow::VisualizationWindow(const rclcpp::NodeOptions & options, QWidget *parent)
+VisualizationWindow::VisualizationWindow(QWidget *parent)
     : QMainWindow(parent),
-      rclcpp::Node("visualization_window", options),
       x_counter_(0.0),
-      max_storage_points_(10000),  // 最大存储10000个点
-      max_data_points_(200),  // 默认显示500个点
-      total_latency_(0.0),  // 初始化总延迟
-      latency_point_count_(0)  // 初始化延迟点计数
+      max_storage_points_(10000),
+      max_data_points_(200),
+      communication_mode_("ros"),
+      ros_total_latency_(0.0),
+      eventbus_total_latency_(0.0),
+      ros_latency_point_count_(0),
+      eventbus_latency_point_count_(0),
+      eventbus_subscription_id_(0)
 {
     init_ui();
-    init_ros2();
+    init_event_bus();
 }
 
+// 1. 修改析构函数
 VisualizationWindow::~VisualizationWindow()
 {
-    RCLCPP_INFO(this->get_logger(), "VisualizationWindow destructor called");
-    
     // Stop and delete update timer
     if (update_timer_) {
         update_timer_->stop();
         delete update_timer_;
         update_timer_ = nullptr;
     }
-    
-    // The ROS2 subscription will be automatically destroyed when the node is deleted
-    RCLCPP_INFO(this->get_logger(), "VisualizationWindow destructor completed");
 }
 
-// Override closeEvent to handle window close gracefully
+// 2. 修复closeEvent函数的作用域
 void VisualizationWindow::closeEvent(QCloseEvent *event)
 {
-    RCLCPP_INFO(this->get_logger(), "Visualization window closing...");
-    
     // Stop timer
     if (update_timer_) {
         update_timer_->stop();
@@ -58,219 +55,260 @@ void VisualizationWindow::closeEvent(QCloseEvent *event)
     QMainWindow::closeEvent(event);
 }
 
+// 3. 实现init_ui()方法
 void VisualizationWindow::init_ui()
 {
-    // Set window properties
-    setWindowTitle("Sensor Data Visualization");
-    resize(1800, 1200);  // 增加窗口初始大小以容纳两个图表
-
     // Create central widget and main layout
     central_widget_ = new QWidget(this);
-    setCentralWidget(central_widget_);
     main_layout_ = new QVBoxLayout(central_widget_);
-
-    // Create main data chart and chart view
+    
+    // Create communication mode selection layout and components
+    communication_mode_layout_ = new QHBoxLayout();
+    QLabel *mode_label = new QLabel("Communication Mode:", this);
+    communication_mode_combo_ = new QComboBox(this);
+    communication_mode_combo_->addItem("ROS", "ros");
+    communication_mode_combo_->addItem("EventBus", "eventbus");
+    communication_mode_layout_->addWidget(mode_label);
+    communication_mode_layout_->addWidget(communication_mode_combo_);
+    communication_mode_layout_->addStretch();
+    
+    // Create main data chart
     chart_ = new QChart();
+    series_ = new QLineSeries();
+    chart_->addSeries(series_);
     chart_view_ = new QChartView(chart_);
     chart_view_->setRenderHint(QPainter::Antialiasing);
-
-    // Create main data series
-    series_ = new QLineSeries();
-    series_->setName("Sensor Data");
-    chart_->addSeries(series_);
-
-    // Create main data axes
+    
+    // Configure axes for main chart
     x_axis_ = new QValueAxis();
-    x_axis_->setTitleText("Time (s)");
-    x_axis_->setRange(0, max_data_points_);  // Start from time 0
-    x_axis_->setTickCount(11);
-    x_axis_->setLabelFormat("%.1f");  // Show one decimal place for time
-    x_axis_->setLabelsFont(QFont("Arial", 8));  // 设置X轴数字显示大小
-
     y_axis_ = new QValueAxis();
-    y_axis_->setTitleText("Value");
-    y_axis_->setRange(0, 10);  // Initial range, will auto-adjust
-    y_axis_->setTickCount(11);
-    y_axis_->setLabelsFont(QFont("Arial", 8));  // 设置Y轴数字显示大小
-
-    // Add main data axes to chart
     chart_->addAxis(x_axis_, Qt::AlignBottom);
     chart_->addAxis(y_axis_, Qt::AlignLeft);
     series_->attachAxis(x_axis_);
     series_->attachAxis(y_axis_);
-
-    // Add main data chart view to main layout
-    main_layout_->addWidget(chart_view_);
+    x_axis_->setTitleText("Time");
+    y_axis_->setTitleText("Sensor Value");
     
-    // Create latency chart and chart view
+    // Create latency chart
     latency_chart_ = new QChart();
-    latency_chart_view_ = new QChartView(latency_chart_);
-    latency_chart_view_->setRenderHint(QPainter::Antialiasing);
-
-    // Create latency data series
-    latency_series_ = new QLineSeries();
-    latency_series_->setName("Latency (ms)");
-    latency_chart_->addSeries(latency_series_);
+    ros_latency_series_ = new QLineSeries();
+    eventbus_latency_series_ = new QLineSeries();
+    ros_average_latency_series_ = new QLineSeries();
+    eventbus_average_latency_series_ = new QLineSeries();
     
-    // Create average latency series
-    average_latency_series_ = new QLineSeries();
-    average_latency_series_->setName("Average Latency (ms)");
-    average_latency_series_->setColor(QColor("red"));  // 使用红色区分
-    average_latency_series_->setPen(QPen(Qt::red, 2, Qt::DashLine));  // 红色虚线
-    latency_chart_->addSeries(average_latency_series_);
-
-    // Create latency data axes
+    // Set series colors and names
+    ros_latency_series_->setName("ROS Latency");
+    ros_latency_series_->setColor(Qt::red);
+    eventbus_latency_series_->setName("EventBus Latency");
+    eventbus_latency_series_->setColor(Qt::blue);
+    ros_average_latency_series_->setName("ROS Average Latency");
+    ros_average_latency_series_->setColor(Qt::darkRed);
+    ros_average_latency_series_->setPen(QPen(Qt::darkRed, 2, Qt::DotLine));
+    eventbus_average_latency_series_->setName("EventBus Average Latency");
+    eventbus_average_latency_series_->setColor(Qt::darkBlue);
+    eventbus_average_latency_series_->setPen(QPen(Qt::darkBlue, 2, Qt::DotLine));
+    
+    // Configure axes for latency chart
     latency_x_axis_ = new QValueAxis();
-    latency_x_axis_->setTitleText("Time (s)");
-    latency_x_axis_->setRange(0, max_data_points_);  // Start from time 0
-    latency_x_axis_->setTickCount(11);
-    latency_x_axis_->setLabelFormat("%.1f");  // Show one decimal place for time
-    latency_x_axis_->setLabelsFont(QFont("Arial", 8));  // 设置X轴数字显示大小
-
     latency_y_axis_ = new QValueAxis();
-    latency_y_axis_->setTitleText("Latency (ms)");
-    latency_y_axis_->setRange(0, 100);  // Initial range for latency (milliseconds)
-    latency_y_axis_->setTickCount(11);
-    latency_y_axis_->setLabelsFont(QFont("Arial", 8));  // 设置Y轴数字显示大小
-
-    // Add latency data axes to chart
     latency_chart_->addAxis(latency_x_axis_, Qt::AlignBottom);
     latency_chart_->addAxis(latency_y_axis_, Qt::AlignLeft);
-    latency_series_->attachAxis(latency_x_axis_);
-    latency_series_->attachAxis(latency_y_axis_);
-    average_latency_series_->attachAxis(latency_x_axis_);  // 平均延迟曲线也附加到X轴
-    average_latency_series_->attachAxis(latency_y_axis_);  // 平均延迟曲线也附加到Y轴
-
-    // Add latency chart view to main layout
-    main_layout_->addWidget(latency_chart_view_);
-
-    // Create average latency label
-    average_latency_label_ = new QLabel(this);
-    average_latency_label_->setText("Average Latency: 0.0 ms");
-    average_latency_label_->setAlignment(Qt::AlignCenter);
-    average_latency_label_->setStyleSheet("font-size: 16px; font-weight: bold; color: red;");
-    main_layout_->addWidget(average_latency_label_);
-
-    // Create zoom controls
+    
+    // Attach series to axes
+    ros_latency_series_->attachAxis(latency_x_axis_);
+    ros_latency_series_->attachAxis(latency_y_axis_);
+    eventbus_latency_series_->attachAxis(latency_x_axis_);
+    eventbus_latency_series_->attachAxis(latency_y_axis_);
+    ros_average_latency_series_->attachAxis(latency_x_axis_);
+    ros_average_latency_series_->attachAxis(latency_y_axis_);
+    eventbus_average_latency_series_->attachAxis(latency_x_axis_);
+    eventbus_average_latency_series_->attachAxis(latency_y_axis_);
+    
+    // Create latency chart view
+    latency_chart_view_ = new QChartView(latency_chart_);
+    latency_chart_view_->setRenderHint(QPainter::Antialiasing);
+    latency_x_axis_->setTitleText("Time");
+    latency_y_axis_->setTitleText("Latency (ms)");
+    
+    // Create latency labels layout
+    latency_labels_layout_ = new QHBoxLayout();
+    ros_average_latency_label_ = new QLabel("ROS Average Latency: 0.00 ms", this);
+    eventbus_average_latency_label_ = new QLabel("EventBus Average Latency: 0.00 ms", this);
+    eventbus_average_latency_label_->hide();  // Initially hide EventBus label
+    latency_labels_layout_->addWidget(ros_average_latency_label_);
+    latency_labels_layout_->addWidget(eventbus_average_latency_label_);
+    latency_labels_layout_->addStretch();
+    
+    // Create zoom control layout
     zoom_layout_ = new QHBoxLayout();
-    zoom_label_ = new QLabel("Display Length:");
-    zoom_slider_ = new QSlider(Qt::Horizontal);
-    zoom_slider_->setRange(100, max_storage_points_);  // 限制缩放范围不超过存储范围
+    zoom_label_ = new QLabel("Zoom:", this);
+    zoom_slider_ = new QSlider(Qt::Horizontal, this);
+    zoom_slider_->setRange(50, 1000);
     zoom_slider_->setValue(max_data_points_);
-    zoom_value_label_ = new QLabel(QString("%1 points").arg(max_data_points_));
-
-    // Add zoom controls to layout
+    zoom_value_label_ = new QLabel(QString("%1 points").arg(max_data_points_), this);
     zoom_layout_->addWidget(zoom_label_);
     zoom_layout_->addWidget(zoom_slider_);
     zoom_layout_->addWidget(zoom_value_label_);
+    zoom_layout_->addStretch();
+    
+    // Add all components to main layout
+    main_layout_->addLayout(communication_mode_layout_);
+    main_layout_->addWidget(chart_view_);
+    main_layout_->addLayout(latency_labels_layout_);
+    main_layout_->addWidget(latency_chart_view_);
     main_layout_->addLayout(zoom_layout_);
-
-    // Connect zoom slider signal
-    connect(zoom_slider_, &QSlider::valueChanged, this, &VisualizationWindow::zoomChanged);
-
+    
+    // Set central widget
+    setCentralWidget(central_widget_);
+    
     // Create update timer
     update_timer_ = new QTimer(this);
+    
+    // Connect signals and slots
     connect(update_timer_, &QTimer::timeout, this, &VisualizationWindow::timerUpdate);
-    // 将UI更新定时器频率降低到1秒
-    update_timer_->start(1000);  // Update UI every 1 second
+    connect(zoom_slider_, &QSlider::valueChanged, this, &VisualizationWindow::zoomChanged);
+    connect(communication_mode_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), 
+            this, &VisualizationWindow::onCommunicationModeChanged);
     
+    // Set initial zoom and start timer
+    zoomChanged(max_data_points_);
+    update_timer_->start(100);  // Update UI every 100 ms
+    
+    // Set window properties
+    setWindowTitle("Sensor Data Visualization");
+    resize(1000, 800);
 }
 
-void VisualizationWindow::init_ros2()
+// 4. 修改init_event_bus方法以保存subscription ID
+void VisualizationWindow::init_event_bus()
 {
-    // 创建实时性QoS配置
-    rclcpp::QoS qos_profile(rclcpp::KeepLast(1));  // 只保留最新1条消息
-    qos_profile.best_effort();  // 使用尽力而为传输
-    qos_profile.deadline(std::chrono::milliseconds(100));  // 设置截止时间
-    qos_profile.lifespan(std::chrono::milliseconds(200));  // 设置消息生命周期
-
-    // Create subscription to processed sensor data topic instead of raw data
-    sensor_subscription_ = this->create_subscription<fake_capture_msgs::msg::CapturedData>(
-    "processed_sensor_data",
-    qos_profile,
-    std::bind(&VisualizationWindow::sensor_data_callback, this, std::placeholders::_1));
-
-    RCLCPP_INFO(this->get_logger(), "Visualization window initialized");
+    // 使用lambda表达式来调用成员函数并保存HandlerId
+    eventbus_subscription_id_ = EVENT_BUS.subscribe("processed_sensor_data", 
+        [this](const QVariantMap& event_data) { onEventBusDataReceived(event_data); });
 }
 
-void VisualizationWindow::sensor_data_callback(const fake_capture_msgs::msg::CapturedData::SharedPtr msg)
+// 5. 在类的命名空间内添加onRosDataReceived方法（确保它在命名空间内）
+void VisualizationWindow::onEventBusDataReceived(const QVariantMap& event_data)
 {
-    // 创建包含数据和时间戳的结构体
-    DataWithTimestamp data_with_ts;
-    data_with_ts.data = msg->data;
-    data_with_ts.timestamp = msg->stamp;
-    
-    // 计算数据采集和显示之间的时间差
-    rclcpp::Time current_time = this->now();
-    rclcpp::Duration time_diff = current_time - data_with_ts.timestamp;
-    
-    // 将时间差转换为毫秒
-    double latency_ms = time_diff.nanoseconds() / 1e6;
-    
-    // 将时间差输出到终端（毫秒）
-    std::cout << "数据采集和显示之间的时间差: " << latency_ms << " 毫秒" << std::endl;
-    
-    // 直接更新图表，同时传递原始数据和延迟数据
-    updateChart(data_with_ts.data, latency_ms);
+    // 只在选择EventBus通信方式时处理数据
+    if (communication_mode_ == "eventbus") {
+        // 从EventBus获取数据和时间戳
+        double data = event_data["data"].toDouble();
+        QDateTime timestamp = event_data["timestamp"].toDateTime();
+        
+        // 计算延迟
+        QDateTime current_time = QDateTime::currentDateTime();
+        double latency_ms = timestamp.msecsTo(current_time);
+        
+        // 输出EventBus延迟到终端
+        std::cout << "EventBus延迟: " << latency_ms << " 毫秒" << std::endl;
+        
+        // 更新图表
+        updateChart(data, latency_ms, false);  // false表示是EventBus数据
+    }
 }
 
-void VisualizationWindow::updateChart(double value, double latency)
+// 在init_event_bus函数之后添加
+void VisualizationWindow::onRosDataReceived(double value, double latency)
 {
-    // Add new data point at current time (x_counter_ starts from 0)
+    // 只在选择ROS通信方式时处理数据
+    if (communication_mode_ == "ros") {
+        // 输出ROS延迟到终端
+        std::cout << "ROS延迟: " << latency << " 毫秒" << std::endl;
+        
+        // 更新图表
+        updateChart(value, latency, true);  // true表示是ROS数据
+    }
+}
+
+void VisualizationWindow::updateChart(double value, double latency, bool is_ros)
+{
+    // 添加主数据点
     all_data_points_.append(QPointF(x_counter_, value));
     
-    // Add new latency point at current time
-    all_latency_points_.append(QPointF(x_counter_, latency));
+    // 添加延迟数据点
+    if (is_ros) {
+        all_ros_latency_points_.append(QPointF(x_counter_, latency));
+        ros_total_latency_ += latency;
+        ros_latency_point_count_++;
+    } else {
+        all_eventbus_latency_points_.append(QPointF(x_counter_, latency));
+        eventbus_total_latency_ += latency;
+        eventbus_latency_point_count_++;
+    }
     
-    // Update total latency and count for average calculation
-    total_latency_ += latency;
-    latency_point_count_++;
-    
-    // Calculate average latency
-    double average_latency = (latency_point_count_ > 0) ? (total_latency_ / latency_point_count_) : 0.0;
-    
-    x_counter_ += 1.0;  // Increment time counter (assuming 1 unit = 1 second)
+    x_counter_ += 1.0;
 
-    // Control memory usage: remove oldest data if we exceed max storage
+    // 控制内存使用
     if (static_cast<size_t>(all_data_points_.size()) > max_storage_points_) {
         all_data_points_.removeFirst();
     }
     
-    if (static_cast<size_t>(all_latency_points_.size()) > max_storage_points_) {
-        // Subtract the removed latency from total before removing it
-        total_latency_ -= all_latency_points_.first().y();
-        all_latency_points_.removeFirst();
-        latency_point_count_--;
-        
-        // Recalculate average if we removed a point
-        average_latency = (latency_point_count_ > 0) ? (total_latency_ / latency_point_count_) : 0.0;
+    if (static_cast<size_t>(all_ros_latency_points_.size()) > max_storage_points_) {
+        ros_total_latency_ -= all_ros_latency_points_.first().y();
+        all_ros_latency_points_.removeFirst();
+        ros_latency_point_count_--;
     }
+    
+    if (static_cast<size_t>(all_eventbus_latency_points_.size()) > max_storage_points_) {
+        eventbus_total_latency_ -= all_eventbus_latency_points_.first().y();
+        all_eventbus_latency_points_.removeFirst();
+        eventbus_latency_point_count_--;
+    }
+}
 
-    // Determine which data points to display based on max_data_points_
+void VisualizationWindow::timerUpdate()
+{
+    // 根据当前通信模式计算平均延迟
+    double ros_average_latency = 0.0;
+    double eventbus_average_latency = 0.0;
+    
+    if (communication_mode_ == "ros") {
+        ros_average_latency = (ros_latency_point_count_ > 0) ? (ros_total_latency_ / ros_latency_point_count_) : 0.0;
+        ros_average_latency_label_->setText(QString("ROS Average Latency: %1 ms").arg(ros_average_latency, 0, 'f', 2));
+    } else {
+        eventbus_average_latency = (eventbus_latency_point_count_ > 0) ? (eventbus_total_latency_ / eventbus_latency_point_count_) : 0.0;
+        eventbus_average_latency_label_->setText(QString("EventBus Average Latency: %1 ms").arg(eventbus_average_latency, 0, 'f', 2));
+    }
+    
+    // 确定要显示的数据点范围
     QVector<QPointF> display_data_points;
-    QVector<QPointF> display_latency_points;
-    QVector<QPointF> display_average_points;  // 用于显示平均延迟的点
+    QVector<QPointF> display_ros_latency_points;
+    QVector<QPointF> display_eventbus_latency_points;
+    QVector<QPointF> display_ros_average_points;
+    QVector<QPointF> display_eventbus_average_points;
     
     int total_data_points = all_data_points_.size();
     int start_index = std::max(0, total_data_points - static_cast<int>(max_data_points_));
     
+    // 只显示所有主数据点（无论通信模式）
     for (int i = start_index; i < total_data_points; ++i) {
         display_data_points.append(all_data_points_[i]);
-        display_latency_points.append(all_latency_points_[i]);
-        display_average_points.append(QPointF(all_latency_points_[i].x(), average_latency));  // 每个X位置都显示当前平均值
+        
+        // 根据当前通信模式只添加对应的数据点
+        if (communication_mode_ == "ros" && i < all_ros_latency_points_.size()) {
+            display_ros_latency_points.append(all_ros_latency_points_[i]);
+            display_ros_average_points.append(QPointF(all_ros_latency_points_[i].x(), ros_average_latency));
+        } else if (communication_mode_ == "eventbus" && i < all_eventbus_latency_points_.size()) {
+            display_eventbus_latency_points.append(all_eventbus_latency_points_[i]);
+            display_eventbus_average_points.append(QPointF(all_eventbus_latency_points_[i].x(), eventbus_average_latency));
+        }
     }
 
-    // Update series data
+    // 更新主数据曲线
     series_->replace(display_data_points);
-    latency_series_->replace(display_latency_points);
-    average_latency_series_->replace(display_average_points);  // 更新平均延迟曲线
+    
+    // 根据当前通信模式更新对应的延迟曲线
+    if (communication_mode_ == "ros") {
+        ros_latency_series_->replace(display_ros_latency_points);
+        ros_average_latency_series_->replace(display_ros_average_points);
+    } else {
+        eventbus_latency_series_->replace(display_eventbus_latency_points);
+        eventbus_average_latency_series_->replace(display_eventbus_average_points);
+    }
 
-    // Update average latency label
-    average_latency_label_->setText(QString("Average Latency: %1 ms").arg(average_latency, 0, 'f', 2));
-
-    // Auto-adjust axes for main data chart
+    // 自动调整主数据图表的坐标轴
     if (display_data_points.size() > 0) {
-        // Adjust Y axis range to show all displayed data
         double y_min = display_data_points.first().y();
         double y_max = display_data_points.first().y();
         
@@ -279,21 +317,18 @@ void VisualizationWindow::updateChart(double value, double latency)
             y_max = std::max(y_max, point.y());
         }
         
-        // Add some padding
         double y_padding = (y_max - y_min) * 0.1;
         if (y_padding == 0) {
-            y_padding = 0.5;  // Minimum padding if all values are the same
+            y_padding = 0.5;
         }
         
         y_axis_->setRange(y_min - y_padding, y_max + y_padding);
         
-        // Adjust X axis range based on current display data
+        // 调整X轴范围
         if (static_cast<size_t>(total_data_points) < max_data_points_) {
-            // Still filling the window, show from time 0
             x_axis_->setRange(0, max_data_points_);
             latency_x_axis_->setRange(0, max_data_points_);
         } else {
-            // Window is full, show last max_data_points_ seconds
             double x_end = x_counter_;
             double x_start = x_end - max_data_points_;
             x_axis_->setRange(x_start, x_end);
@@ -301,29 +336,32 @@ void VisualizationWindow::updateChart(double value, double latency)
         }
     }
     
-    // Auto-adjust axes for latency chart
-    if (display_latency_points.size() > 0) {
-        // Adjust Y axis range to show all displayed latency data
-        double latency_min = display_latency_points.first().y();
-        double latency_max = display_latency_points.first().y();
-        
-        for (const auto &point : display_latency_points) {
+    // 自动调整延迟图表的Y轴，只考虑当前通信模式的数据
+    double latency_min = 0.0;
+    double latency_max = 10.0;
+    
+    if (communication_mode_ == "ros" && !display_ros_latency_points.empty()) {
+        for (const auto &point : display_ros_latency_points) {
             latency_min = std::min(latency_min, point.y());
             latency_max = std::max(latency_max, point.y());
         }
-        
-        // Ensure average latency is also visible
-        latency_min = std::min(latency_min, average_latency);
-        latency_max = std::max(latency_max, average_latency);
-        
-        // Add some padding
-        double latency_padding = (latency_max - latency_min) * 0.1;
-        if (latency_padding == 0) {
-            latency_padding = 5.0;  // Minimum padding for latency
+        latency_min = std::min(latency_min, ros_average_latency);
+        latency_max = std::max(latency_max, ros_average_latency);
+    } else if (communication_mode_ == "eventbus" && !display_eventbus_latency_points.empty()) {
+        for (const auto &point : display_eventbus_latency_points) {
+            latency_min = std::min(latency_min, point.y());
+            latency_max = std::max(latency_max, point.y());
         }
-        
-        latency_y_axis_->setRange(latency_min - latency_padding, latency_max + latency_padding);
+        latency_min = std::min(latency_min, eventbus_average_latency);
+        latency_max = std::max(latency_max, eventbus_average_latency);
     }
+    
+    double latency_padding = (latency_max - latency_min) * 0.1;
+    if (latency_padding == 0) {
+        latency_padding = 5.0;
+    }
+    
+    latency_y_axis_->setRange(latency_min - latency_padding, latency_max + latency_padding);
 }
 
 void VisualizationWindow::zoomChanged(int value)
@@ -334,48 +372,71 @@ void VisualizationWindow::zoomChanged(int value)
     // Update slider label
     zoom_value_label_->setText(QString("%1 points").arg(value));
     
-    // Recalculate average latency
-    double average_latency = (latency_point_count_ > 0) ? (total_latency_ / latency_point_count_) : 0.0;
-    
-    // Determine which data points to display based on new max_data_points_
-    QVector<QPointF> display_data_points;
-    QVector<QPointF> display_latency_points;
-    QVector<QPointF> display_average_points;  // 平均延迟点
-    
-    int total_data_points = all_data_points_.size();
-    int start_index = std::max(0, total_data_points - static_cast<int>(max_data_points_));
-    
-    for (int i = start_index; i < total_data_points; ++i) {
-        display_data_points.append(all_data_points_[i]);
-        display_latency_points.append(all_latency_points_[i]);
-        display_average_points.append(QPointF(all_latency_points_[i].x(), average_latency));  // 平均延迟曲线点
-    }
-    
-    // Update charts to reflect new zoom level
-    series_->replace(display_data_points);
-    latency_series_->replace(display_latency_points);
-    average_latency_series_->replace(display_average_points);  // 更新平均延迟曲线
-    
-    // Update average latency label
-    average_latency_label_->setText(QString("Average Latency: %1 ms").arg(average_latency, 0, 'f', 2));
-    
-    // Update X axis ranges
-    if (static_cast<size_t>(total_data_points) < max_data_points_) {
-        // Still filling the window, show from time 0
-        x_axis_->setRange(0, max_data_points_);
-        latency_x_axis_->setRange(0, max_data_points_);
-    } else {
-        // Window is full, show last max_data_points_ seconds
-        double x_end = x_counter_;
-        double x_start = x_end - max_data_points_;
-        x_axis_->setRange(x_start, x_end);
-        latency_x_axis_->setRange(x_start, x_end);
-    }
+    // 重新更新图表
+    timerUpdate();
 }
 
-void VisualizationWindow::timerUpdate()
-{
-    // 不再处理数据队列，仅保持定时器运行以维持节点活动
-    // 可以添加一些定期维护任务，如清理内存等
+void VisualizationWindow::onCommunicationModeChanged(int) {
+    // Get selected communication mode
+    communication_mode_ = communication_mode_combo_->currentData().toString().toStdString();
+    
+    // Remove only series that are currently in the chart
+    if (latency_chart_->series().contains(ros_latency_series_)) {
+        latency_chart_->removeSeries(ros_latency_series_);
+    }
+    if (latency_chart_->series().contains(eventbus_latency_series_)) {
+        latency_chart_->removeSeries(eventbus_latency_series_);
+    }
+    if (latency_chart_->series().contains(ros_average_latency_series_)) {
+        latency_chart_->removeSeries(ros_average_latency_series_);
+    }
+    if (latency_chart_->series().contains(eventbus_average_latency_series_)) {
+        latency_chart_->removeSeries(eventbus_average_latency_series_);
+    }
+    
+    // Hide all latency labels
+    ros_average_latency_label_->hide();
+    eventbus_average_latency_label_->hide();
+    
+    // Add only the selected communication mode's series
+    if (communication_mode_ == "ros") {
+        latency_chart_->addSeries(ros_latency_series_);
+        latency_chart_->addSeries(ros_average_latency_series_);
+        ros_average_latency_label_->show();
+    } else {
+        latency_chart_->addSeries(eventbus_latency_series_);
+        latency_chart_->addSeries(eventbus_average_latency_series_);
+        eventbus_average_latency_label_->show();
+    }
+    
+    // Clear all data points to start fresh with new communication mode
+    all_data_points_.clear();
+    series_->clear();
+    all_ros_latency_points_.clear();
+    all_eventbus_latency_points_.clear();
+    ros_latency_series_->clear();
+    eventbus_latency_series_->clear();
+    ros_average_latency_series_->clear();
+    eventbus_average_latency_series_->clear();
+    
+    x_counter_ = 0.0;
+    ros_total_latency_ = 0.0;
+    eventbus_total_latency_ = 0.0;
+    ros_latency_point_count_ = 0;
+    eventbus_latency_point_count_ = 0;
+    
+    // Update chart immediately
+    timerUpdate();
+    
+    // 使用标准C++输出替代ROS日志
+    std::cout << "Switched communication mode to: " << communication_mode_ << std::endl;
 }
-}
+
+}  // namespace qt_visualization
+
+// Remove this include
+// #include "rclcpp_components/register_node_macro.hpp"
+
+// Remove this line at the end of the file
+// 删除文件末尾的以下代码（如果存在）
+// RCLCPP_COMPONENTS_REGISTER_NODE(qt_visualization::VisualizationWindow)

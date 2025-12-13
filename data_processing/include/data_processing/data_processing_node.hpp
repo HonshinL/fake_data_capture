@@ -8,6 +8,7 @@
 #include <QtCore>
 #include <thread>
 #include <atomic>
+#include <event_bus_cpp/event_bus.hpp>  // 添加EventBus头文件
 
 namespace data_processing {
 
@@ -25,7 +26,7 @@ public:
     explicit DataProcessingNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
     ~DataProcessingNode();
 
-signals:
+ signals:
     // Qt signal to emit processed data
     void dataReady(double value, rclcpp::Time timestamp);
 

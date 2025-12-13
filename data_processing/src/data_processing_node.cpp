@@ -4,6 +4,7 @@
 #include "rclcpp_components/register_node_macro.hpp"
 #include <chrono>
 #include <iostream>
+#include <event_bus_cpp/event_bus.hpp>  // 添加EventBus头文件
 
 namespace data_processing {
 
@@ -78,6 +79,13 @@ void DataProcessingNode::process_data_thread()
             message.data = processed_data;
             message.stamp = data_with_ts.timestamp; // 保留原始时间戳
             processed_data_publisher_->publish(message);
+            
+            // 同时使用EventBus发布数据
+            QVariantMap event_data;
+            event_data["data"] = processed_data;
+            event_data["timestamp"] = QDateTime::fromMSecsSinceEpoch(data_with_ts.timestamp.nanoseconds() / 1e6);
+            // 使用EVENT_BUS宏替换EventBus::instance()
+            EVENT_BUS.publish("processed_sensor_data", event_data);
             
             // 发送Qt信号
             emit dataReady(processed_data, data_with_ts.timestamp);

@@ -17,6 +17,8 @@
   <depend>Qt5Widgets</depend>
   <depend>Qt5Gui</depend>
   <depend>Qt5Charts</depend>
+  <depend>event_bus_cpp</depend>
+  <depend>data_processing</depend> <!-- 添加对data_processing包的依赖 -->
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

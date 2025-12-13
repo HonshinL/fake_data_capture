@@ -14,6 +14,7 @@
   <depend>std_msgs</depend>
   <depend>Qt5Core</depend>
   <depend>fake_capture_msgs</depend>
+  <depend>event_bus_cpp</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

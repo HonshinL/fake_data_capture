@@ -31,16 +31,8 @@ def generate_launch_description():
                     {'qos_depth': 10},  # 增加队列深度以减少消息丢失
                     {'qos_reliability': 'best_effort'}
                 ]
-            ),
-            ComposableNode(
-                package='data_processing',
-                plugin='data_processing::DataProcessingNode',
-                name='data_processing_node',
-                parameters=[
-                    {'alpha': 0.05},  # 调整滤波参数
-                    {'processing_frequency': 50.0}  # 提高处理频率
-                ]
             )
+            # 移除data_processing_node，现在它作为UI主线程的子线程运行
         ]
     )
     
