@@ -64,6 +64,7 @@ void DataProcessingNode::sensor_data_callback(const fake_capture_msgs::msg::Capt
     }
 }
 
+// 修改process_data_thread方法中的EventBus发布部分
 void DataProcessingNode::process_data_thread()
 {
     DataWithTimestamp data_with_ts;
@@ -83,7 +84,11 @@ void DataProcessingNode::process_data_thread()
             // 同时使用EventBus发布数据
             QVariantMap event_data;
             event_data["data"] = processed_data;
-            event_data["timestamp"] = QDateTime::fromMSecsSinceEpoch(data_with_ts.timestamp.nanoseconds() / 1e6);
+            // 将ROS时间戳转换为Unix时间戳（微秒）
+            double unix_timestamp_us = 
+                data_with_ts.timestamp.nanoseconds() / 1000.0 + 
+                (rclcpp::Time(0).seconds() * 1000000.0); // 添加ROS epoch到Unix epoch的偏移
+            event_data["timestamp_us"] = unix_timestamp_us;
             // 使用EVENT_BUS宏替换EventBus::instance()
             EVENT_BUS.publish("processed_sensor_data", event_data);
             

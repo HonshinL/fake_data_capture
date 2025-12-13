@@ -49,29 +49,45 @@ int main(int argc, char **argv)
     QObject::connect(sensor_data_node.get(), &qt_visualization::SensorDataNode::dataReceived,
                      &window, &qt_visualization::VisualizationWindow::onRosDataReceived);
     
-    // Run both nodes in a single thread (or separate threads if needed)
+    // Run both nodes in a single thread with periodic checking
+    bool is_running = true;
     std::thread ros_thread([&]() {
-        rclcpp::executors::MultiThreadedExecutor executor;
+        rclcpp::executors::SingleThreadedExecutor executor;
         executor.add_node(data_processing_node);
         executor.add_node(sensor_data_node);
-        executor.spin();
+        
+        // Use a timeout to periodically check if we should exit
+        while (is_running && rclcpp::ok()) {
+            executor.spin_once(std::chrono::milliseconds(100));
+        }
     });
     
     // Run Qt event loop
     int result = app.exec();
     
     // Cleanup in correct order
-    // 1. 首先将nodes置为空，这会停止订阅并释放节点资源
+    std::cout << "Qt event loop exited, cleaning up..." << std::endl;
+    
+    // Set flag to stop ROS thread
+    is_running = false;
+    
+    // 1. 首先调用rclcpp::shutdown()关闭ROS2系统
+    if (rclcpp::ok()) {
+        rclcpp::shutdown();
+        std::cout << "ROS2 shutdown completed" << std::endl;
+    }
+    
+    // 2. 等待ros_thread结束
+    if (ros_thread.joinable()) {
+        std::cout << "Waiting for ROS thread to exit..." << std::endl;
+        ros_thread.join();
+        std::cout << "ROS thread exited" << std::endl;
+    }
+    
+    // 3. 最后将nodes置为空，释放节点资源
     data_processing_node.reset();
     sensor_data_node.reset();
-    
-    // 2. 然后调用rclcpp::shutdown()关闭ROS2系统
-    rclcpp::shutdown();
-    
-    // 3. 最后等待ros_thread结束
-    if (ros_thread.joinable()) {
-        ros_thread.join();
-    }
+    std::cout << "All resources released, exiting..." << std::endl;
     
     return result;
 }

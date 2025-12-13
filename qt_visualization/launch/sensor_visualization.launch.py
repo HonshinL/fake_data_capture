@@ -1,10 +1,9 @@
 from launch import LaunchDescription
 from launch_ros.actions import ComposableNodeContainer, Node
 from launch_ros.descriptions import ComposableNode
-from launch.actions import RegisterEventHandler, EmitEvent
+from launch.actions import GroupAction, TimerAction, RegisterEventHandler, EmitEvent
 from launch.event_handlers import OnProcessExit
 from launch.events import Shutdown
-from launch.actions import GroupAction, TimerAction
 
 def generate_launch_description():
     # Create a component container with IPC enabled for better performance
@@ -47,16 +46,6 @@ def generate_launch_description():
         ]
     )
     
-    # Register event handler: when visualization node exits, emit Shutdown event
-    viz_exit_handler = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=qt_visualization,
-            on_exit=[
-                EmitEvent(event=Shutdown(reason="Visualization window closed"))
-            ]
-        )
-    )
-    
     # Control startup order
     group_actions = GroupAction([
         container,
@@ -66,7 +55,15 @@ def generate_launch_description():
         )
     ])
     
+    # Add event handler to shut down launch system when qt_visualization_node exits
+    event_handler = RegisterEventHandler(
+        OnProcessExit(
+            target_action=qt_visualization,
+            on_exit=[EmitEvent(event=Shutdown(reason='Qt visualization window closed'))]
+        )
+    )
+    
     return LaunchDescription([
         group_actions,
-        viz_exit_handler
+        event_handler
     ])
