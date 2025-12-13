@@ -27,9 +27,9 @@ find_package(data_processing REQUIRED)  # 添加对data_processing包的依赖
 # Create library for VisualizationWindow
 add_library(qt_visualization_lib SHARED
   src/visualization_window.cpp
-  src/sensor_data_node.cpp
+  src/qt_sensor_data_node.cpp
   include/qt_visualization/visualization_window.hpp
-  include/qt_visualization/sensor_data_node.hpp
+  include/qt_visualization/qt_sensor_data_node.hpp
 )
 
 # Set target include directories

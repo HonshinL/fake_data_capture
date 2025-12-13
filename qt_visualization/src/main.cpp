@@ -1,5 +1,5 @@
 #include "qt_visualization/visualization_window.hpp"
-#include "qt_visualization/sensor_data_node.hpp"
+#include "qt_visualization/qt_sensor_data_node.hpp"
 #include "data_processing/data_processing_node.hpp"  // 包含DataProcessingNode头文件
 #include <QApplication>
 #include <rclcpp/rclcpp.hpp>
@@ -39,14 +39,14 @@ int main(int argc, char **argv)
     
     // Create ROS nodes
     auto data_processing_node = std::make_shared<data_processing::DataProcessingNode>();
-    auto sensor_data_node = std::make_shared<qt_visualization::SensorDataNode>();
+    auto qt_sensor_data_node = std::make_shared<qt_visualization::SensorDataNode>();
     
     // 创建可视化窗口
     qt_visualization::VisualizationWindow window;
     window.show();
     
     // 连接ROS节点信号到窗口槽
-    QObject::connect(sensor_data_node.get(), &qt_visualization::SensorDataNode::dataReceived,
+    QObject::connect(qt_sensor_data_node.get(), &qt_visualization::SensorDataNode::dataReceived,
                      &window, &qt_visualization::VisualizationWindow::onRosDataReceived);
     
     // Run both nodes in a single thread with periodic checking
@@ -54,7 +54,7 @@ int main(int argc, char **argv)
     std::thread ros_thread([&]() {
         rclcpp::executors::SingleThreadedExecutor executor;
         executor.add_node(data_processing_node);
-        executor.add_node(sensor_data_node);
+        executor.add_node(qt_sensor_data_node);
         
         // Use a timeout to periodically check if we should exit
         while (is_running && rclcpp::ok()) {
@@ -86,7 +86,7 @@ int main(int argc, char **argv)
     
     // 3. 最后将nodes置为空，释放节点资源
     data_processing_node.reset();
-    sensor_data_node.reset();
+    qt_sensor_data_node.reset();
     std::cout << "All resources released, exiting..." << std::endl;
     
     return result;

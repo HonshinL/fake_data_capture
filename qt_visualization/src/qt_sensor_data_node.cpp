@@ -2,14 +2,14 @@
 #include <fake_capture_msgs/msg/captured_data.hpp>
 
 #include <QObject>
-#include "qt_visualization/sensor_data_node.hpp"
+#include "qt_visualization/qt_sensor_data_node.hpp"
 #include <chrono>
 #include <iostream>
 
 namespace qt_visualization {
 
 SensorDataNode::SensorDataNode(const rclcpp::NodeOptions & options)
-    : QObject(), rclcpp::Node("sensor_data_node", options)
+    : QObject(), rclcpp::Node("qt_sensor_data_node", options)
 {
     // 创建实时性QoS配置
     rclcpp::QoS qos_profile(rclcpp::KeepLast(1));  // 只保留最新1条消息

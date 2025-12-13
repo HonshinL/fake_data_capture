@@ -25,7 +25,7 @@ DataProcessingNode::DataProcessingNode(const rclcpp::NodeOptions & options)
 
     // Create subscription to sensor data
     sensor_subscription_ = this->create_subscription<fake_capture_msgs::msg::CapturedData>(
-        "sensor_data",
+        "captured_sensor_data",
         qos_profile,
         std::bind(&DataProcessingNode::sensor_data_callback, this, std::placeholders::_1));
 

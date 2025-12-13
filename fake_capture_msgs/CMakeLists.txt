@@ -14,6 +14,7 @@ find_package(builtin_interfaces REQUIRED)
 # Generate interfaces
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/CapturedData.msg"
+  "msg/ProcessedData.msg"
   DEPENDENCIES std_msgs builtin_interfaces
 )
 

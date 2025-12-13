@@ -34,7 +34,7 @@ FakeSensorNode::FakeSensorNode(const rclcpp::NodeOptions & options)
   qos_profile.lifespan(std::chrono::milliseconds(200));  // 设置消息生命周期
 
   // 创建发布者
-  sensor_publisher_ = this->create_publisher<fake_capture_msgs::msg::CapturedData>("sensor_data", qos_profile);
+  sensor_publisher_ = this->create_publisher<fake_capture_msgs::msg::CapturedData>("captured_sensor_data", qos_profile);
 
   // 创建定时器
   timer_ = this->create_wall_timer(
